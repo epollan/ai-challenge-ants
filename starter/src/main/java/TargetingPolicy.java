@@ -4,7 +4,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * TODO
+ * TODO -- probably need some multiplier/ratio that caps the number of ants
+ * that will be targeted (i.e. above and beyond the "per-target assignment limit")
  * Author: evan.pollan
  * Date: 11/22/11
  * Time: 8:03 PM
