@@ -1,3 +1,4 @@
+import org.apache.log4j.Logger;
 import org.omg.CORBA.PUBLIC_MEMBER;
 
 import java.util.ArrayList;
@@ -29,6 +30,7 @@ public class RepulsionPolicy {
     // Mutiplier used to expand the radius of repulsion to come up with
     // egress route targets.
     private static final float REPULSION_RADIUS_MULTIPLIER = 2.0f;
+    private static final Logger _log = Logger.getLogger(RepulsionPolicy.class);
 
     private Tile _epicenter;
     private int _radiusOfRepulsion;
@@ -64,7 +66,7 @@ public class RepulsionPolicy {
         CircumferenceDirection currentDirection = CircumferenceDirection.SouthEast;
         Tile current = start;
         do {
-            if (!_ants.getIlk(current).isPassable()) {
+            if (_ants.getIlk(current).isPassable()) {
                 try {
                     egressRouteCandidates.add(new AStarRoute(_ants, _epicenter, current));
                 } catch (NoRouteException ex) {
@@ -96,6 +98,10 @@ public class RepulsionPolicy {
         for (int j = 0; j < i; j++) {
             _egressTargets.add(egressRouteCandidates.get(j).getEnd());
         }
+        if (_log.isDebugEnabled()) {
+            _log.debug(String.format("Calculated %d egress targets for repulsion epicenter %s",
+                                     _egressTargets.size(), _epicenter));
+        }
     }
 
     public void evacuate(Iterable<Tile> untargeted, HandleRepulsion handler) {
@@ -109,10 +115,27 @@ public class RepulsionPolicy {
         // Sort ants to be evacuated by distance from epicenter, with those
         // furthest first.
         Collections.sort(toEvacuate);
-        for (EgressCandidate evacuateMe : toEvacuate) {
-            // Sort to handle blocking?
+        for (EgressCandidate ant : toEvacuate) {
+            // Sort to handle blocking -- might need this to fall-back on *slightly*
+            // less optimal egress routes...
+            AStarRoute shortest = null;
+            for (Tile target : _egressTargets) {
+                try {
+                    AStarRoute route = new AStarRoute(_ants, ant._ant, target);
+                    if (shortest == null || route.getDistance() < shortest.getDistance()) {
+                        shortest = route;
+                    }
+                } catch (NoRouteException ex) {
+                }
+            }
+            if (shortest != null) {
+                if (_log.isDebugEnabled()) {
+                    _log.debug(String.format("Repulsing ant at [%s] away from [%s]",
+                                             shortest.getStart(), _epicenter));
+                }
+                handler.repulse(shortest.getStart(), shortest.nextTile());
+            }
         }
-
     }
 
     // Offsets to travel in a given direction along the "circumference" of a
