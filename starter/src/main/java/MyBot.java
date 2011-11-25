@@ -98,13 +98,18 @@ public class MyBot extends Bot {
     }
 
     private void exploreUnseenTiles() {
+        // TODO: algorithm that seems to make sense -- take any untasked ants and run the
+        // radius of "unseen" relative to those ants, using A* routing to figure out the
+        // best way forward.  Thought:  can a hill-unblocking policy work here, where the
+        // 'center' of repulsion is the relative center of visibility?
         targetTiles(_unseenTiles, _unseenPolicy);
     }
 
     private void unblockHills() {
         // TODO -- this doesn't work when there's a critical mass of ants around the hills,
         // because the only ants being moved are those directly on the hill, and those
-        // on the periphery can block their egress
+        // on the periphery can block their egress.  What we really want is a 'sphere' of
+        // repulsion that triggers route calculations that move away from that sphere.
         Ants ants = getAnts();
         for (Tile myHill : ants.getMyHills()) {
             if (ants.getMyAnts().contains(myHill) && !_toMove.contains(myHill)) {
