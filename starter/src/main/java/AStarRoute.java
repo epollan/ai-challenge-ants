@@ -100,12 +100,7 @@ public class AStarRoute extends Route {
 
     // Best case distance heuristic, dX + dY
     private double heuristic(Tile start, Tile goal) {
-        int rowDelta = Math.abs(start.getRow() - goal.getRow());
-        int colDelta = Math.abs(start.getCol() - goal.getCol());
-        // Map is a torus -- no edges
-        rowDelta = Math.min(rowDelta, _ants.getRows() - rowDelta);
-        colDelta = Math.min(colDelta, _ants.getCols() - colDelta);
-        return rowDelta + colDelta;
+        return _ants.getDistance(start, goal);
     }
 
     // Backtrack from the currentNode using the cameFrom map to construct

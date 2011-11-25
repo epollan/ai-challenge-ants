@@ -320,7 +320,7 @@ public class Ants {
     }
 
     /**
-     * Calculates the square of the distance between two locations on the game map.
+     * Calculates the distance between two locations on the game map in moves
      * 
      * @param t1 one location on the game map
      * @param t2 another location on the game map
@@ -333,7 +333,7 @@ public class Ants {
         // Map is a torus -- no edges
         rowDelta = Math.min(rowDelta, rows - rowDelta);
         colDelta = Math.min(colDelta, cols - colDelta);
-        return rowDelta * rowDelta + colDelta * colDelta;
+        return rowDelta + colDelta;
     }
 
     /**
