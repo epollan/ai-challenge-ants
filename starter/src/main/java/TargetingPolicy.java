@@ -27,10 +27,21 @@ public class TargetingPolicy {
     private Map<Tile, ReferenceInt> _assignments;
     private String _name;
 
+    // Map-storable reference to a mutable int.  Integer wraps an immutable value (relative
+    // to what's stored in the Integer instance itself)
     private static class ReferenceInt {
         public int Value = 0;
     }
 
+    /**
+     * Constructor
+     * @param name policy name, used for descriptive logging purposes
+     * @param assignmentLimit maximum number of ants that can be 'tasked' to a particular
+     *                        target
+     * @param perAntRouteLimit maximum number of routes that should be considered per ant
+     *                         to limit computational complexity when there are large numbers
+     *                         of ants and/or large numbers of targets
+     */
     public TargetingPolicy(String name, int assignmentLimit, Integer perAntRouteLimit) {
         _name = name;
         _assignments = new HashMap<Tile, ReferenceInt>();
