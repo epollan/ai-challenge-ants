@@ -13,7 +13,8 @@ import javax.sound.midi.VoiceStatus;
 @Test
 public class RepulsionTest extends BaseTest {
 
-    public void testEgressRouteCount() throws Exception {
+    public void testEgressRouteCount()
+            throws Exception {
         final String map =
                 "........................\n" +
                 "........................\n" +
@@ -32,12 +33,14 @@ public class RepulsionTest extends BaseTest {
         // 4,8
         Ants a = getAnts(map);
         RepulsionPolicy policy = new RepulsionPolicy(a, new Tile(6, 8), 4);
-        policy.evacuate(a.getMyAnts(), new RepulsionPolicy.HandleRepulsion() {
-            @Override
-            public void repulse(Tile ant, Tile destination) {
-                System.out.format("Evacuating [%s] by way of [%s]\n", ant, destination);
-            }
-        });
+        policy.evacuate(a.getMyAnts(),
+                        _dummyManager,
+                        new RepulsionPolicy.HandleRepulsion() {
+                            @Override
+                            public void repulse(Tile ant, Tile destination) {
+                                System.out.format("Evacuating [%s] by way of [%s]\n", ant, destination);
+                            }
+                        });
     }
 
 }

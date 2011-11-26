@@ -1,4 +1,5 @@
 import org.apache.log4j.BasicConfigurator;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeSuite;
 
 import java.io.BufferedReader;
@@ -14,12 +15,22 @@ import java.util.Map;
  */
 public class BaseTest {
 
-    @BeforeSuite
+    protected TimeManager _dummyManager;
+
+    @BeforeClass
     public void configureLogging() {
         BasicConfigurator.configure();
+        _dummyManager = new TimeManager(10000);
+        _dummyManager.nextStep();
+        _dummyManager.nextStep();
+        _dummyManager.nextStep();
+        _dummyManager.nextStep();
+        _dummyManager.turnDone();
+        _dummyManager.nextStep();
     }
 
-    protected Ants getAnts(String map) throws Exception {
+    protected Ants getAnts(String map)
+            throws Exception {
         BufferedReader reader = new BufferedReader(new StringReader(map));
         int rows = 0, cols = -1;
         String row;
@@ -27,24 +38,23 @@ public class BaseTest {
         while ((row = reader.readLine()) != null) {
             if (cols == -1) {
                 cols = row.length();
-            }
-            else if (row.length() != cols) {
+            } else if (row.length() != cols) {
                 throw new RuntimeException("Uneven map row length");
             }
             for (int col = 0; col < cols; col++) {
                 char c = row.charAt(col);
                 Ilk ilk;
                 switch (c) {
-                    case 'A' :
+                    case 'A':
                         ilk = Ilk.MY_ANT;
                         break;
-                    case 'F' :
+                    case 'F':
                         ilk = Ilk.FOOD;
                         break;
-                    case 'W' :
+                    case 'W':
                         ilk = Ilk.WATER;
                         break;
-                    default :
+                    default:
                         ilk = Ilk.LAND;
                 }
                 layout.put(new Tile(rows, col), ilk);

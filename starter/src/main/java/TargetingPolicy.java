@@ -19,11 +19,15 @@ public class TargetingPolicy {
             for (ReferenceInt assignment : p._assignments.values()) {
                 assignment.Value = 0;
             }
+            p._totalAssignments = 0;
+            p._totalAssignmentsLimit = null;
         }
     }
 
     private Integer _perAntRouteLimit;
-    private int _assignmentLimit;
+    private int _perTargetAssignmentLimit;
+    private int _totalAssignments = 0;
+    private Integer _totalAssignmentsLimit = null;
     private Map<Tile, ReferenceInt> _assignments;
     private String _name;
 
@@ -36,22 +40,22 @@ public class TargetingPolicy {
     /**
      * Constructor
      * @param name policy name, used for descriptive logging purposes
-     * @param assignmentLimit maximum number of ants that can be 'tasked' to a particular
+     * @param perTargetAssignmentLimit maximum number of ants that can be 'tasked' to a particular
      *                        target
      * @param perAntRouteLimit maximum number of routes that should be considered per ant
      *                         to limit computational complexity when there are large numbers
      *                         of ants and/or large numbers of targets
      */
-    public TargetingPolicy(String name, int assignmentLimit, Integer perAntRouteLimit) {
+    public TargetingPolicy(String name, int perTargetAssignmentLimit, Integer perAntRouteLimit) {
         _name = name;
         _assignments = new HashMap<Tile, ReferenceInt>();
-        _assignmentLimit = assignmentLimit;
+        _perTargetAssignmentLimit = perTargetAssignmentLimit;
         _perAntRouteLimit = perAntRouteLimit;
         _policies.add(this);
     }
 
-    public int getAssignmentLimit() {
-        return _assignmentLimit;
+    public int getPerTargetAssignmentLimit() {
+        return _perTargetAssignmentLimit;
     }
 
     public Integer getPerAntRouteLimit() {
@@ -60,17 +64,34 @@ public class TargetingPolicy {
 
     public void assign(Tile ant, Tile target) {
         ReferenceInt assignmentCount = getAssignmentCount(target);
-        if (assignmentCount.Value < _assignmentLimit) {
+        if (assignmentCount.Value < _perTargetAssignmentLimit) {
             assignmentCount.Value++;
         } else {
             throw new RuntimeException(String.format("Target tile [R=%d,C=%d] over-assigned",
                                                      target.getRow(), target.getCol()));
         }
+        ++_totalAssignments;
     }
 
     public boolean canAssign(Tile ant, Tile target) {
-        return getAssignmentCount(target).Value < _assignmentLimit;
+        return getAssignmentCount(target).Value < _perTargetAssignmentLimit;
     }
+
+    public boolean totalAssignmentsLimitReached(int targetCount) {
+        if (_totalAssignmentsLimit == null) {
+            _totalAssignmentsLimit = new Integer(targetCount * _perTargetAssignmentLimit);
+        }
+        return _totalAssignments >= _totalAssignmentsLimit.intValue();
+    }
+
+    public int getTotalAssignmentsLimit(int targetCount) {
+        if (_totalAssignmentsLimit == null) {
+            _totalAssignmentsLimit = new Integer(targetCount * _perTargetAssignmentLimit);
+        }
+        return _totalAssignmentsLimit.intValue();
+    }
+
+
 
     @Override
     public String toString() {

@@ -109,7 +109,7 @@ public class RepulsionPolicy {
         }
     }
 
-    public void evacuate(Iterable<Tile> untargeted, HandleRepulsion handler) {
+    public void evacuate(Iterable<Tile> untargeted, TimeManager manager, HandleRepulsion handler) {
         List<EgressCandidate> toEvacuate = new LinkedList<EgressCandidate>();
         for (Tile ant : untargeted) {
             int distance = _ants.getDistance(_epicenter, ant);
@@ -125,6 +125,9 @@ public class RepulsionPolicy {
             // less optimal egress routes...
             AStarRoute shortest = null;
             for (Tile target : _egressTargets) {
+                if (manager.stepTimeOverrun()) {
+                    break;
+                }
                 try {
                     AStarRoute route = new AStarRoute(_ants, ant._ant, target);
                     if (shortest == null || route.getDistance() < shortest.getDistance()) {
@@ -139,6 +142,9 @@ public class RepulsionPolicy {
                                              shortest.getStart(), _epicenter, shortest));
                 }
                 handler.repulse(shortest.getStart(), shortest.nextTile());
+            }
+            if (manager.stepTimeOverrun()) {
+                break;
             }
         }
     }
