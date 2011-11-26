@@ -1,8 +1,3 @@
-import com.sun.corba.se.impl.oa.poa.Policies;
-import com.sun.corba.se.pept.transport.ContactInfo;
-import com.sun.corba.se.spi.activation._LocatorImplBase;
-import com.sun.org.apache.xpath.internal.operations.Bool;
-import org.apache.log4j.Appender;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
@@ -30,6 +25,7 @@ public class MyBot extends Bot {
     private TargetingPolicy _foodPolicy = new TargetingPolicy("FoodPolicy", 1, 5);
     private TargetingPolicy _hillPolicy = new TargetingPolicy("HillPolicy", 5, 5);
     private TargetingPolicy _unseenPolicy = new TargetingPolicy("UnseenTilePolicy", 1, 5);
+    private Map<Tile, RepulsionPolicy> _myHillRepulsions = null;
     private TreeSet<Tile> _sortedAnts = new TreeSet<Tile>();
     private int _turn = 0;
     private static Logger _log = Logger.getLogger(MyBot.class);
@@ -40,11 +36,17 @@ public class MyBot extends Bot {
      */
     @Override
     public void doTurn() {
+        Ants ants = getAnts();
         _log.info(String.format("[[...turn %d...]]", _turn++));
         try {
             long start = System.currentTimeMillis();
-            Ants ants = getAnts();
-            _sortedAnts.addAll(ants.getMyAnts());
+
+            if (_myHillRepulsions == null && ants.getMyHills().size() > 0) {
+                _myHillRepulsions = new HashMap<Tile, RepulsionPolicy>();
+                for (Tile myHill : ants.getMyHills()) {
+                    _myHillRepulsions.put(myHill, new RepulsionPolicy(ants, myHill, 5));
+                }
+            }
 
             if (_unseenTiles == null) {
                 _unseenTiles = new HashSet<Tile>();
@@ -54,6 +56,9 @@ public class MyBot extends Bot {
                     }
                 }
             }
+
+            _sortedAnts.addAll(ants.getMyAnts());
+
             // remove any tiles that can be seen, run each turn
             for (Iterator<Tile> locIter = _unseenTiles.iterator(); locIter.hasNext(); ) {
                 Tile next = locIter.next();
@@ -74,7 +79,7 @@ public class MyBot extends Bot {
             TargetingPolicy.clearAssignments();
             long finish = System.currentTimeMillis();
             _log.info(String.format("[[ # turn %d processing took %d ms, allowed %d.  Overall remaining: %d # ]]",
-                                    _turn-1, finish-start, ants.getTurnTime(), ants.getTimeRemaining()));
+                                    _turn - 1, finish - start, ants.getTurnTime(), ants.getTimeRemaining()));
         } catch (Throwable t) {
             _log.error("Unexpected turn processing error", t);
             throw new RuntimeException("Unexpected", t);
@@ -106,19 +111,29 @@ public class MyBot extends Bot {
     }
 
     private void unblockHills() {
-        // TODO -- this doesn't work when there's a critical mass of ants around the hills,
-        // because the only ants being moved are those directly on the hill, and those
-        // on the periphery can block their egress.  What we really want is a 'sphere' of
-        // repulsion that triggers route calculations that move away from that sphere.
-        Ants ants = getAnts();
-        for (Tile myHill : ants.getMyHills()) {
-            if (ants.getMyAnts().contains(myHill) && !_toMove.contains(myHill)) {
-                for (Aim direction : Aim.values()) {
-                    if (moveInDirection(myHill, direction)) {
-                        break;
+        if (_myHillRepulsions == null) {
+            // Haven't learned of our hills, yet
+            return;
+        }
+        final Set<Tile> untargeted = new HashSet<Tile>(getAnts().getMyAnts());
+        for (Tile targeted : _toMove) {
+            untargeted.remove(targeted);
+        }
+        if (_log.isDebugEnabled()) {
+            _log.debug(String.format("Checking for own-hill repulsion on %d untargeted ants", untargeted.size()));
+        }
+        for (final RepulsionPolicy policy : _myHillRepulsions.values()) {
+            policy.evacuate(untargeted, new RepulsionPolicy.HandleRepulsion() {
+                @Override
+                public void repulse(Tile ant, Tile destination) {
+                    if (moveToLocation(ant, destination)) {
+                        untargeted.remove(ant);
                     }
                 }
-            }
+            });
+        }
+        if (_log.isDebugEnabled()) {
+            _log.debug(String.format("Unblocked hills, %d ms remaining in turn", getAnts().getTimeRemaining()));
         }
     }
 

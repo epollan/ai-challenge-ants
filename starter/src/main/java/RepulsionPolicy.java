@@ -1,4 +1,5 @@
 import org.apache.log4j.Logger;
+import org.omg.CORBA.PUBLIC_MEMBER;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -44,6 +45,8 @@ public class RepulsionPolicy {
         _radiusOfRepulsion = Math.min(radiusOfRepulsion, _maximumRadius);
         calculateEgressTargets();
     }
+
+    public Tile getEpicenter() { return _epicenter; }
 
     private void calculateEgressTargets() {
         // Start due north of the epicenter, and walk the 'circle' (really, diamond) that's
@@ -124,9 +127,6 @@ public class RepulsionPolicy {
             for (Tile target : _egressTargets) {
                 try {
                     AStarRoute route = new AStarRoute(_ants, ant._ant, target);
-                    if (_log.isDebugEnabled()) {
-
-                    }
                     if (shortest == null || route.getDistance() < shortest.getDistance()) {
                         shortest = route;
                     }
