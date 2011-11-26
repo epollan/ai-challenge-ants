@@ -1,3 +1,6 @@
+import org.apache.log4j.BasicConfigurator;
+import org.testng.annotations.BeforeSuite;
+
 import java.io.BufferedReader;
 import java.io.StringReader;
 import java.util.HashMap;
@@ -11,13 +14,23 @@ import java.util.Map;
  */
 public class BaseTest {
 
+    @BeforeSuite
+    public void configureLogging() {
+        BasicConfigurator.configure();
+    }
+
     protected Ants getAnts(String map) throws Exception {
         BufferedReader reader = new BufferedReader(new StringReader(map));
-        int rows = 0, cols = 0;
+        int rows = 0, cols = -1;
         String row;
         Map<Tile, Ilk> layout = new HashMap<Tile, Ilk>();
         while ((row = reader.readLine()) != null) {
-            cols = row.length();
+            if (cols == -1) {
+                cols = row.length();
+            }
+            else if (row.length() != cols) {
+                throw new RuntimeException("Uneven map row length");
+            }
             for (int col = 0; col < cols; col++) {
                 char c = row.charAt(col);
                 Ilk ilk;

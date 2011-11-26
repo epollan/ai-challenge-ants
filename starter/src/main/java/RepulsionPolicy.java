@@ -1,5 +1,4 @@
 import org.apache.log4j.Logger;
-import org.omg.CORBA.PUBLIC_MEMBER;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -7,7 +6,6 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Represents a policy of repulsion from some point on the map
@@ -26,21 +24,24 @@ public class RepulsionPolicy {
 
     // Threshold, relative to median egress route distance, above which
     // egress routes will be discarded
-    private static final float EGRESS_MEDIAN_THRESHOLD = 2.0f;
+    private static final float EGRESS_MEDIAN_THRESHOLD = 1.5f;
     // Mutiplier used to expand the radius of repulsion to come up with
     // egress route targets.
-    private static final float REPULSION_RADIUS_MULTIPLIER = 2.0f;
+    private static final float REPULSION_RADIUS_MULTIPLIER = 1.5f;
     private static final Logger _log = Logger.getLogger(RepulsionPolicy.class);
 
     private Tile _epicenter;
     private int _radiusOfRepulsion;
     private List<Tile> _egressTargets;
     private Ants _ants;
+    private final int _maximumRadius;
 
     public RepulsionPolicy(Ants ants, Tile epicenter, int radiusOfRepulsion) {
         _ants = ants;
+        // width/height of, e.g. 11, means our max radius is 5 ((11-1)/2).
+        _maximumRadius = (int) Math.floor((Math.min(_ants.getRows(), _ants.getCols()) - 1) / 2.0);
         _epicenter = epicenter;
-        _radiusOfRepulsion = radiusOfRepulsion;
+        _radiusOfRepulsion = Math.min(radiusOfRepulsion, _maximumRadius);
         calculateEgressTargets();
     }
 
@@ -48,21 +49,22 @@ public class RepulsionPolicy {
         // Start due north of the epicenter, and walk the 'circle' (really, diamond) that's
         // radiusOfRepulsion * REPULSION_RADIUS_MULTIPLIER from the epicenter
         int egressRadius = (int) Math.ceil(_radiusOfRepulsion * REPULSION_RADIUS_MULTIPLIER);
+        egressRadius = Math.min(egressRadius, _maximumRadius);
         List<AStarRoute> egressRouteCandidates = new ArrayList<AStarRoute>(egressRadius * 4);
 
         // Direction changes will correspond to due east/south/west/north
         Map<Tile, CircumferenceDirection> directionChanges = new HashMap<Tile, CircumferenceDirection>();
-        directionChanges.put(new Tile(_epicenter.getRow() + egressRadius, _epicenter.getCol()),
+        directionChanges.put(getTile(_epicenter, -egressRadius, 0),
                              CircumferenceDirection.SouthEast);
-        directionChanges.put(new Tile(_epicenter.getRow(), _epicenter.getCol() + egressRadius),
+        directionChanges.put(getTile(_epicenter, 0, egressRadius),
                              CircumferenceDirection.SouthWest);
-        directionChanges.put(new Tile(_epicenter.getRow() - egressRadius, _epicenter.getCol()),
+        directionChanges.put(getTile(_epicenter, egressRadius, 0),
                              CircumferenceDirection.NorthWest);
-        directionChanges.put(new Tile(_epicenter.getRow(), _epicenter.getCol() - egressRadius),
+        directionChanges.put(getTile(_epicenter, 0, -egressRadius),
                              CircumferenceDirection.NorthEast);
 
         // Start north, heading southeast
-        Tile start = new Tile(_epicenter.getRow() + _radiusOfRepulsion, _epicenter.getCol());
+        Tile start = getTile(_epicenter, -egressRadius, 0);
         CircumferenceDirection currentDirection = CircumferenceDirection.SouthEast;
         Tile current = start;
         do {
@@ -72,7 +74,7 @@ public class RepulsionPolicy {
                 } catch (NoRouteException ex) {
                 }
             }
-            current = currentDirection.next(current);
+            current = getTile(current, currentDirection.getRowDelta(), currentDirection.getColDelta());
             CircumferenceDirection newDirection = directionChanges.get(current);
             if (newDirection != null) {
                 currentDirection = newDirection;
@@ -99,8 +101,8 @@ public class RepulsionPolicy {
             _egressTargets.add(egressRouteCandidates.get(j).getEnd());
         }
         if (_log.isDebugEnabled()) {
-            _log.debug(String.format("Calculated %d egress targets for repulsion epicenter %s",
-                                     _egressTargets.size(), _epicenter));
+            _log.debug(String.format("Calculated %d egress targets with radius %d for repulsion zone [%s] +/- %d",
+                                     _egressTargets.size(), egressRadius, _epicenter, _radiusOfRepulsion));
         }
     }
 
@@ -122,6 +124,9 @@ public class RepulsionPolicy {
             for (Tile target : _egressTargets) {
                 try {
                     AStarRoute route = new AStarRoute(_ants, ant._ant, target);
+                    if (_log.isDebugEnabled()) {
+
+                    }
                     if (shortest == null || route.getDistance() < shortest.getDistance()) {
                         shortest = route;
                     }
@@ -130,22 +135,38 @@ public class RepulsionPolicy {
             }
             if (shortest != null) {
                 if (_log.isDebugEnabled()) {
-                    _log.debug(String.format("Repulsing ant at [%s] away from [%s]",
-                                             shortest.getStart(), _epicenter));
+                    _log.debug(String.format("Repulsing ant at [%s] away from [%s], using route: %s",
+                                             shortest.getStart(), _epicenter, shortest));
                 }
                 handler.repulse(shortest.getStart(), shortest.nextTile());
             }
         }
     }
 
+    private Tile getTile(Tile start, int rowDelta, int colDelta) {
+        int row = start.getRow() + rowDelta;
+        if (row < 0) {
+            row += _ants.getRows();
+        } else if (row >= _ants.getRows()) {
+            row -= _ants.getRows();
+        }
+        int col = start.getCol() + colDelta;
+        if (col < 0) {
+            col += _ants.getCols();
+        } else if (col >= _ants.getCols()) {
+            col -= _ants.getCols();
+        }
+        return new Tile(row, col);
+    }
+
     // Offsets to travel in a given direction along the "circumference" of a
     // "circle" (diamond)
     private static enum CircumferenceDirection {
 
-        SouthEast(-1, 1),
-        SouthWest(-1, -1),
-        NorthWest(1, -1),
-        NorthEast(1, 1);
+        SouthEast(1, 1),
+        SouthWest(1, -1),
+        NorthWest(-1, -1),
+        NorthEast(-1, 1);
 
         private final int _rowDelta;
         private final int _colDelta;
@@ -155,8 +176,12 @@ public class RepulsionPolicy {
             _colDelta = colDelta;
         }
 
-        public Tile next(Tile start) {
-            return new Tile(start.getRow() + _rowDelta, start.getCol() + _colDelta);
+        int getRowDelta() {
+            return _rowDelta;
+        }
+
+        int getColDelta() {
+            return _colDelta;
         }
     }
 
