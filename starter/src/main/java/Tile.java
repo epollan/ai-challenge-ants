@@ -10,8 +10,8 @@ public class Tile implements Comparable<Tile> {
     /**
      * Creates new {@link Tile} object.
      * 
-     * @param _row _row index
-     * @param _col _column index
+     * @param row row index
+     * @param col column index
      */
     public Tile(int row, int col) {
         _row = row;
