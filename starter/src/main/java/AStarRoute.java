@@ -26,8 +26,9 @@ public class AStarRoute extends Route {
         _route = calculateRoute();
         _distance = _route.size();
         if (_nextTile == null) {
-            throw new RuntimeException(String.format("Unexpected route of length %d from [%s] to [%s], but missing 'nextTile'",
-                                                     _distance, _start, _end));
+            throw new RuntimeException(
+                    String.format("Unexpected route of length %d from [%s] to [%s], but missing 'nextTile'",
+                                  _distance, _start, _end));
         }
     }
 
@@ -37,6 +38,11 @@ public class AStarRoute extends Route {
 
     public Tile nextTile() {
         return _nextTile;
+    }
+
+    @Override
+    public String toString() {
+        return String.format("[%s]-->[%s] (d=%d, next=[%s])", _start, _end, _distance, _nextTile);
     }
 
     private List<Tile> calculateRoute()
