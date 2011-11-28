@@ -1,4 +1,7 @@
+import com.sun.corba.se.spi.activation._ActivatorImplBase;
 import org.apache.log4j.Logger;
+
+import javax.swing.plaf.basic.BasicInternalFrameTitlePane;
 import java.util.List;
 import java.util.LinkedList;
 
@@ -11,9 +14,12 @@ public final class TimeManager {
 
     private final long _totalAllowed;
     private int _currentStep = 0;
+    private long _turnStartMs;
     private long _stepStartMs;
     private long[] _stepAllowedMs;
     private List<Float> _stepWeights = new LinkedList<Float>();
+    private String[] _stepDescriptions;
+    private List<String> _wipStepDescriptions = new LinkedList<String>();
 
     // Singleton
     public TimeManager(long totalAllowed) {
@@ -38,8 +44,9 @@ public final class TimeManager {
         boolean overrun = (System.currentTimeMillis() - _stepStartMs) >= _stepAllowedMs[_currentStep];
         if (overrun) {
             Logger log = Logger.getLogger(TimeManager.class);
-            log.info(String.format("Step #%d (of %d) overran allotted time of %d ms",
-                                   _currentStep + 1, _stepAllowedMs.length, _stepAllowedMs[_currentStep]));
+            log.info(String.format("Step '%s' (#%d of %d) overran allotted time of %d ms",
+                                   _stepDescriptions[_currentStep], _currentStep + 1,
+                                   _stepAllowedMs.length, _stepAllowedMs[_currentStep]));
         }
         return overrun;
     }
@@ -49,21 +56,48 @@ public final class TimeManager {
      *
      * @param weight weight of this step, relative to the amount of time it should
      *               be allotted relative to the other steps.  Default is 1.0
+     * @param stepDescription descriptive text for the step
      */
-    public void nextStep(float weight) {
+    public void nextStep(float weight, String stepDescription) {
         ++_currentStep;
         _stepStartMs = System.currentTimeMillis();
         if (_stepWeights != null) {
             _stepWeights.add(new Float(weight));
+            _wipStepDescriptions.add(stepDescription);
         }
+    }
+
+    /**
+     * Move to the next processing step, overriding the default weight of 1.0
+     *
+     * @param weight weight of this step, relative to the amount of time it should
+     *               be allotted relative to the other steps.  Default is 1.0
+     */
+    public void nextStep(float weight) {
+        nextStep(weight, null);
+    }
+
+    /**
+     * Move to the next processing step, assigning it the default weight of 1.0
+     *
+     * @param stepDescription descriptive text for the step
+     */
+    public void nextStep(String stepDescription) {
+        nextStep(1.0f, stepDescription);
     }
 
     /**
      * Move to the next processing step, assigning it the default weight of 1.0
      */
     public void nextStep() {
-        nextStep(1.0f);
+        nextStep(null);
     }
+
+    public void turnStarted() {
+        _turnStartMs = System.currentTimeMillis();
+    }
+
+    public long getTurnStartMs() { return _turnStartMs; }
 
     /**
      * Indicate that the game turn is done
@@ -87,6 +121,16 @@ public final class TimeManager {
             }
             // Clear reference to list of step weights -- not needed any more
             _stepWeights = null;
+
+            // Repeat process for step descriptions
+            _stepDescriptions = new String[_wipStepDescriptions.size()];
+            for (int i = 0; i < _stepDescriptions.length; i++) {
+                _stepDescriptions[i] = _wipStepDescriptions.get(i);
+                if (_stepDescriptions[i] == null) {
+                    _stepDescriptions[i] = "Step #" + i;
+                }
+            }
+            _wipStepDescriptions = null;
         }
         _currentStep = -1;
     }
