@@ -16,13 +16,6 @@ import java.util.Map;
  */
 public class RepulsionPolicy {
 
-    /**
-     * Callback used to notify of repulsion
-     */
-    public interface HandleRepulsion {
-        void repulse(Tile ant, Tile destination);
-    }
-
     // Threshold, relative to median egress route distance, above which
     // egress routes will be discarded
     private static final float EGRESS_MEDIAN_THRESHOLD = 1.5f;
@@ -109,7 +102,7 @@ public class RepulsionPolicy {
         }
     }
 
-    public void evacuate(Iterable<Tile> untargeted, TimeManager manager, HandleRepulsion handler) {
+    public void evacuate(Iterable<Tile> untargeted, TimeManager manager, MovementHandler handler) {
         List<EgressCandidate> toEvacuate = new LinkedList<EgressCandidate>();
         for (Tile ant : untargeted) {
             int distance = _ants.getDistance(_epicenter, ant);
@@ -141,7 +134,7 @@ public class RepulsionPolicy {
                     _log.debug(String.format("Repulsing ant at [%s] away from [%s], using route: %s",
                                              shortest.getStart(), _epicenter, shortest));
                 }
-                handler.repulse(shortest.getStart(), shortest.nextTile());
+                handler.move(shortest.getStart(), shortest.nextTile());
             }
             if (manager.stepTimeOverrun()) {
                 break;

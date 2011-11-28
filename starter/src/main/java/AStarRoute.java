@@ -71,7 +71,6 @@ public class AStarRoute extends Route {
             }
             if (_end.equals(x)) {
                 List<Tile> route = new LinkedList<Tile>();
-                //reconstructPath(cameFrom, cameFrom.get(_end), route);
                 reconstructPath(cameFrom, _end, route);
                 return route;
             }

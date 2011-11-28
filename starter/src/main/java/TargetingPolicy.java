@@ -12,10 +12,21 @@ import java.util.Map;
  */
 public class TargetingPolicy {
 
-    private static List<TargetingPolicy> _policies = new LinkedList<TargetingPolicy>();
+    public interface TargetingHandler {
+        boolean move(Tile ant, Tile nextTile, Tile finalDestination, TargetingPolicy.Type type);
+    }
+
+    public static enum Type {
+        Food,
+        EnemyHill,
+        EnemyAnt,
+        UnseenTile
+    }
+
+    private static Map<Type, TargetingPolicy> _policies = new HashMap<Type, TargetingPolicy>();
 
     public static void clearAssignments() {
-        for (TargetingPolicy p : _policies) {
+        for (TargetingPolicy p : _policies.values()) {
             for (ReferenceInt assignment : p._assignments.values()) {
                 assignment.Value = 0;
             }
@@ -24,12 +35,20 @@ public class TargetingPolicy {
         }
     }
 
+    public static void add(Type type, int perTargetAssignmentLimit, Integer perAntRouteLimit) {
+        _policies.put(type, new TargetingPolicy(type, perTargetAssignmentLimit, perAntRouteLimit));
+    }
+
+    public static TargetingPolicy get(Type type) {
+        return _policies.get(type);
+    }
+
     private Integer _perAntRouteLimit;
     private int _perTargetAssignmentLimit;
     private int _totalAssignments = 0;
     private Integer _totalAssignmentsLimit = null;
     private Map<Tile, ReferenceInt> _assignments;
-    private String _name;
+    private Type _type;
 
     // Map-storable reference to a mutable int.  Integer wraps an immutable value (relative
     // to what's stored in the Integer instance itself)
@@ -39,19 +58,18 @@ public class TargetingPolicy {
 
     /**
      * Constructor
-     * @param name policy name, used for descriptive logging purposes
+     * @param type policy type
      * @param perTargetAssignmentLimit maximum number of ants that can be 'tasked' to a particular
      *                        target
      * @param perAntRouteLimit maximum number of routes that should be considered per ant
      *                         to limit computational complexity when there are large numbers
      *                         of ants and/or large numbers of targets
      */
-    public TargetingPolicy(String name, int perTargetAssignmentLimit, Integer perAntRouteLimit) {
-        _name = name;
+    private TargetingPolicy(Type type, int perTargetAssignmentLimit, Integer perAntRouteLimit) {
+        _type = type;
         _assignments = new HashMap<Tile, ReferenceInt>();
         _perTargetAssignmentLimit = perTargetAssignmentLimit;
         _perAntRouteLimit = perAntRouteLimit;
-        _policies.add(this);
     }
 
     public int getPerTargetAssignmentLimit() {
@@ -91,11 +109,11 @@ public class TargetingPolicy {
         return _totalAssignmentsLimit.intValue();
     }
 
-
+    public Type getType() { return _type; }
 
     @Override
     public String toString() {
-        return _name;
+        return _type.toString() + "Policy";
     }
 
     private ReferenceInt getAssignmentCount(Tile target) {

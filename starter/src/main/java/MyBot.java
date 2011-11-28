@@ -1,4 +1,7 @@
+import com.sun.istack.internal.FinalArrayList;
 import org.apache.log4j.Logger;
+import org.testng.internal.Nullable;
+
 import java.io.IOException;
 import java.util.*;
 
@@ -19,9 +22,11 @@ public class MyBot extends Bot {
     }
 
     // Policies, tuning parameters
-    private final TargetingPolicy _foodPolicy = new TargetingPolicy("FoodPolicy", 1, 2);
-    private final TargetingPolicy _hillPolicy = new TargetingPolicy("HillPolicy", 5, 2);
-    private final TargetingPolicy _unseenPolicy = new TargetingPolicy("UnseenTilePolicy", 1, 1);
+    static {
+        TargetingPolicy.add(TargetingPolicy.Type.Food, 1, 2);
+        TargetingPolicy.add(TargetingPolicy.Type.EnemyHill, 5, 2);
+        TargetingPolicy.add(TargetingPolicy.Type.UnseenTile, 1, 1);
+    }
     private final static int TIME_ALLOCATION_PAD = 50;
     private final static int MY_HILL_RADIUS_OF_REPULSION = 6;
     private final static int UNSEEN_TILE_SAMPLING_RATE = 5;
@@ -39,6 +44,7 @@ public class MyBot extends Bot {
     private int _turn = 0;
     private final static Logger _log = Logger.getLogger(MyBot.class);
     private TimeManager _timeManager = null;
+    private TargetingHistory _history;
 
     /**
      * For every ant check every direction in fixed order (N, E, S, W) and move it if the tile is
@@ -47,13 +53,17 @@ public class MyBot extends Bot {
     @Override
     public void doTurn() {
         Ants ants = getAnts();
-        _untargetedAnts.addAll(ants.getMyAnts());
-        int managedTimeAllocation = ants.getTurnTime() - TIME_ALLOCATION_PAD;
-        if (_timeManager == null || _timeManager.getTotalAllowed() != managedTimeAllocation) {
-            _timeManager = new TimeManager(managedTimeAllocation);
-        }
-        _log.info(String.format("[[...turn %d...]]", _turn++));
         try {
+            _untargetedAnts.addAll(ants.getMyAnts());
+            if (_history == null) {
+                _history = new TargetingHistory(ants);
+            }
+            _history.syncState(_turn);
+            int managedTimeAllocation = ants.getTurnTime() - TIME_ALLOCATION_PAD;
+            if (_timeManager == null || _timeManager.getTotalAllowed() != managedTimeAllocation) {
+                _timeManager = new TimeManager(managedTimeAllocation);
+            }
+            _log.info(String.format("[[...turn %d...]]", _turn++));
             _timeManager.turnStarted();
 
             for (Tile myHill : ants.getMyHills()) {
@@ -85,6 +95,7 @@ public class MyBot extends Bot {
             }
 
             avoidHills();
+            followBreadcrumbs();
             seekFood();
             attackHills();
             exploreUnseenTiles();
@@ -127,19 +138,38 @@ public class MyBot extends Bot {
         }
     }
 
+    private void followBreadcrumbs() {
+        // Shallow copy iteration in case an ant gets targeted
+        int initialCount = _untargetedAnts.size();
+        for (Tile ant : new ArrayList<Tile>(_untargetedAnts)) {
+            _history.followBreadcrumb(ant, new TargetingPolicy.TargetingHandler() {
+                @Override
+                public boolean move(Tile ant, Tile nextTile, Tile finalDestination, TargetingPolicy.Type type) {
+                    TargetingPolicy policy = TargetingPolicy.get(type);
+                    if (policy.canAssign(ant, finalDestination) && moveToLocation(ant, nextTile)) {
+                        policy.assign(ant, finalDestination);
+                        return true;
+                    }
+                    return false;
+                }
+            });
+        }
+        _log.info(String.format("Moved %d ants based on historical targeting",
+                                initialCount - _untargetedAnts.size()));
+    }
+
     private void seekFood() {
         // find close food
-        targetTiles(getAnts().getFoodTiles(), _foodPolicy);
+        targetTiles(getAnts().getFoodTiles(), TargetingPolicy.get(TargetingPolicy.Type.Food));
     }
 
     private void attackHills() {
         // attack hills
-        targetTiles(getAnts().getEnemyHills(), _hillPolicy);
+        targetTiles(getAnts().getEnemyHills(), TargetingPolicy.get(TargetingPolicy.Type.EnemyHill));
     }
 
     private void exploreUnseenTiles() {
-
-        targetTiles(_unseenTiles, _unseenPolicy);
+        targetTiles(_unseenTiles, TargetingPolicy.get(TargetingPolicy.Type.UnseenTile));
     }
 
     private void unblockHills() {
@@ -152,10 +182,10 @@ public class MyBot extends Bot {
         for (final RepulsionPolicy policy : _myHillRepulsions.values()) {
             policy.evacuate(_untargetedAnts,
                             _timeManager,
-                            new RepulsionPolicy.HandleRepulsion() {
+                            new MovementHandler() {
                                 @Override
-                                public void repulse(Tile ant, Tile destination) {
-                                    moveToLocation(ant, destination);
+                                public boolean move(Tile ant, Tile destination) {
+                                    return moveToLocation(ant, destination);
                                 }
                             });
         }
@@ -175,8 +205,18 @@ public class MyBot extends Bot {
         // ant will have a chance to plot *some* optimal routes to some number of targets
         // in order of naive distance ranking
         Map<Tile, ArrayList<Tile>> targetsRelativeToAntByAnt = new HashMap<Tile, ArrayList<Tile>>();
+        ArrayList<Tile> targetableTargets = new ArrayList<Tile>(targets);
+        for (int i = targetableTargets.size()-1; i >= 0; i--) {
+            if (!policy.canAssign(null, targetableTargets.get(i))) {
+                targetableTargets.remove(i);
+            }
+        }
+        if (_log.isDebugEnabled() && targetableTargets.size() < targets.size()) {
+            _log.debug(String.format("Skipping targeting of %d %s due to historical targeting routes",
+                                     (targets.size() - targetableTargets.size()), policy.getType()));
+        }
         for (final Tile ant : _untargetedAnts) {
-            ArrayList<Tile> relativeToAnt = new ArrayList<Tile>(targets);
+            ArrayList<Tile> relativeToAnt = new ArrayList<Tile>(targetableTargets);
             Collections.sort(relativeToAnt, new Comparator<Tile>() {
                 @Override
                 public int compare(Tile o1, Tile o2) {
@@ -200,7 +240,7 @@ public class MyBot extends Bot {
         // Track routes computed per-ant, to enable a bail on route calc's for a given ant when we hit
         // a policy-defined limit
         Map<Tile, Integer> routeCountByAnt = new HashMap<Tile, Integer>();
-        List<Route> routes = new LinkedList<Route>();
+        List<AStarRoute> routes = new LinkedList<AStarRoute>();
 
         // Chunks of per-ant-sorted targets we'll walk through to compute A* routes
         final int targetStepSize = 3;
@@ -221,13 +261,7 @@ public class MyBot extends Bot {
                     Tile target = relativeToAnt.get(i);
                     long routeStart = System.currentTimeMillis();
                     try {
-                        /*
-                        if (ant.equals(target)) {
-                            // Ant's already on target
-                            continue;
-                        }
-                        */
-                        Route route = new AStarRoute(ants, ant, target);
+                        AStarRoute route = new AStarRoute(ants, ant, target);
                         routes.add(route);
                         if (_log.isDebugEnabled()) {
                             _log.debug(String.format("%s route candidate for ant [%s] to tile [%s] (dist=%d): %s",
@@ -270,7 +304,7 @@ public class MyBot extends Bot {
 
         int currentUntargetedAntCount = _untargetedAnts.size();
         Collections.sort(routes);
-        for (Route route : routes) {
+        for (AStarRoute route : routes) {
             if (_toMove.contains(route.getStart())) {
                 // More optimial route already assigned movement to this route's ant
                 continue;
@@ -280,6 +314,7 @@ public class MyBot extends Bot {
             }
             if (policy.canAssign(route.getStart(), route.getEnd()) && move(route)) {
                 policy.assign(route.getStart(), route.getEnd());
+                _history.create(route.getStart(), route.getEnd(), policy.getType(), route);
                 --candidateAnts;
                 if (_log.isDebugEnabled()) {
                     _log.debug(String.format("Move successful -- route assigned using %s", policy));

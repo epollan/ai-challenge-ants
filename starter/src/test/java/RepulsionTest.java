@@ -35,10 +35,11 @@ public class RepulsionTest extends BaseTest {
         RepulsionPolicy policy = new RepulsionPolicy(a, new Tile(6, 8), 4);
         policy.evacuate(a.getMyAnts(),
                         _dummyManager,
-                        new RepulsionPolicy.HandleRepulsion() {
+                        new MovementHandler() {
                             @Override
-                            public void repulse(Tile ant, Tile destination) {
+                            public boolean move(Tile ant, Tile destination) {
                                 System.out.format("Evacuating [%s] by way of [%s]\n", ant, destination);
+                                return true;
                             }
                         });
     }
