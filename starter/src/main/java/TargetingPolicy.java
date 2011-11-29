@@ -35,8 +35,8 @@ public class TargetingPolicy {
         }
     }
 
-    public static void add(Type type, int perTargetAssignmentLimit, Integer perAntRouteLimit) {
-        _policies.put(type, new TargetingPolicy(type, perTargetAssignmentLimit, perAntRouteLimit));
+    public static void add(Type type, int perTargetAssignmentLimit, Integer perAntRouteLimit, Integer antLimit) {
+        _policies.put(type, new TargetingPolicy(type, perTargetAssignmentLimit, perAntRouteLimit, antLimit));
     }
 
     public static TargetingPolicy get(Type type) {
@@ -47,6 +47,7 @@ public class TargetingPolicy {
     private int _perTargetAssignmentLimit;
     private int _totalAssignments = 0;
     private Integer _totalAssignmentsLimit = null;
+    private Integer _antLimit = null;
     private Map<Tile, ReferenceInt> _assignments;
     private Type _type;
 
@@ -58,18 +59,21 @@ public class TargetingPolicy {
 
     /**
      * Constructor
-     * @param type policy type
+     *
+     * @param type                     policy type
      * @param perTargetAssignmentLimit maximum number of ants that can be 'tasked' to a particular
-     *                        target
-     * @param perAntRouteLimit maximum number of routes that should be considered per ant
-     *                         to limit computational complexity when there are large numbers
-     *                         of ants and/or large numbers of targets
+     *                                 target
+     * @param perAntRouteLimit         maximum number of routes that should be considered per ant
+     *                                 to limit computational complexity when there are large numbers
+     *                                 of ants and/or large numbers of targets
+     * @param antLimit                 max number of ants that should be targeted
      */
-    private TargetingPolicy(Type type, int perTargetAssignmentLimit, Integer perAntRouteLimit) {
+    private TargetingPolicy(Type type, int perTargetAssignmentLimit, Integer perAntRouteLimit, Integer antLimit) {
         _type = type;
         _assignments = new HashMap<Tile, ReferenceInt>();
         _perTargetAssignmentLimit = perTargetAssignmentLimit;
         _perAntRouteLimit = perAntRouteLimit;
+        _antLimit = antLimit;
     }
 
     public int getPerTargetAssignmentLimit() {
@@ -78,6 +82,10 @@ public class TargetingPolicy {
 
     public Integer getPerAntRouteLimit() {
         return _perAntRouteLimit;
+    }
+
+    public Integer getAntLimit() {
+        return _antLimit;
     }
 
     public void assign(Tile ant, Tile target) {
@@ -99,7 +107,8 @@ public class TargetingPolicy {
         if (_totalAssignmentsLimit == null) {
             _totalAssignmentsLimit = new Integer(targetCount * _perTargetAssignmentLimit);
         }
-        return _totalAssignments >= _totalAssignmentsLimit.intValue();
+        return _totalAssignments >= _totalAssignmentsLimit.intValue() ||
+                (_antLimit != null && _totalAssignments >= _antLimit);
     }
 
     public int getTotalAssignmentsLimit(int targetCount) {
@@ -109,7 +118,9 @@ public class TargetingPolicy {
         return _totalAssignmentsLimit.intValue();
     }
 
-    public Type getType() { return _type; }
+    public Type getType() {
+        return _type;
+    }
 
     @Override
     public String toString() {

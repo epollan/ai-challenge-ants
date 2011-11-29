@@ -129,7 +129,8 @@ public class AStarRoute extends Route {
             Tile neighbor = _ants.getTile(t, aim);
             // We can travel to a neighboring tile if it's unoccupied, or if it's our
             // end goal
-            if (_ants.getIlk(neighbor).isUnoccupied() || neighbor.equals(_end)) {
+            //if (_ants.getIlk(neighbor).isUnoccupied() || neighbor.equals(_end)) {
+            if (_ants.getIlk(neighbor).isPassable() || neighbor.equals(_end)) {
                 _neighborsBuffer.add(neighbor);
             }
         }

@@ -11,9 +11,10 @@ import java.util.Map;
  */
 public class TargetingHistory {
 
-    private Map<Tile, Breadcrumb> _map = new HashMap<Tile, Breadcrumb>();
+    private final Map<Tile, Breadcrumb> _map = new HashMap<Tile, Breadcrumb>();
     private int _turn;
-    private Ants _ants;
+    private final Ants _ants;
+    private final ArrayList<Tile> _neighborsBuffer = new ArrayList<Tile>(8);
     private static final Logger _log = Logger.getLogger(TargetingHistory.class);
 
     public TargetingHistory(Ants ants) {
@@ -46,6 +47,7 @@ public class TargetingHistory {
                        Tile destination,
                        TargetingPolicy.Type type,
                        AStarRoute route) {
+        final Tile influencer = current;
         for (Tile nextHop : route.routeTiles()) {
             if (nextHop.equals(destination)) {
                 break;
@@ -56,18 +58,18 @@ public class TargetingHistory {
             breadcrumb.TurnCreated = _turn;
             breadcrumb.Next = nextHop;
             breadcrumb.UsageCount = 0;
-            for (Tile neighbor : getBreadcrumbNeighborhood(current, type)) {
+            _map.put(current, breadcrumb);
+            for (final Tile neighbor : getBreadcrumbNeighborhood(current, nextHop, type)) {
                 Breadcrumb preexisting = _map.get(neighbor);
-                if (preexisting == null) {
+                if (preexisting == null && !neighbor.equals(destination)) {
                     UnroutedBreadcrumb hint = new UnroutedBreadcrumb();
                     hint.Destination = destination;
                     hint.Type = type;
                     hint.TurnCreated = _turn;
-                    hint.RouteInfluencer = current;
+                    hint.RouteInfluencer = influencer;
                     _map.put(neighbor, hint);
                 }
             }
-            _map.put(current, breadcrumb);
             current = nextHop;
         }
     }
@@ -76,12 +78,15 @@ public class TargetingHistory {
         Breadcrumb crumb = _map.get(ant);
         if (crumb instanceof UnroutedBreadcrumb) {
             Tile influencer = ((UnroutedBreadcrumb) crumb).RouteInfluencer;
-            RoutedBreadcrumb influence = (RoutedBreadcrumb) _map.get(influencer);
-            if (influence == null) {
+            Breadcrumb influence = _map.get(influencer);
+            if (influence instanceof UnroutedBreadcrumb) {
+                _log.info(String.format("Unexpected unrouted influencer created for destination=[%s] on turn %d.  Our destination=[%s]",
+                                        influence.Destination, influence.TurnCreated, crumb.Destination));
+            } else if (influence == null) {
                 _log.info(String.format("Removing unrouted breadcrumb at [%s] because its influencer at [%s] is missing",
                                         ant, influencer));
                 _map.remove(ant);
-            } else {
+            } else if (!ant.equals(influence.Destination)) {
                 // We need to calculate our own route from this tile
                 try {
                     AStarRoute route = new AStarRoute(_ants, ant, influence.Destination);
@@ -113,10 +118,27 @@ public class TargetingHistory {
         }
     }
 
-    private Iterable<Tile> getBreadcrumbNeighborhood(Tile center, TargetingPolicy.Type type) {
-        // TODO
-        final ArrayList<Tile> empty = new ArrayList<Tile>(0);
-        return empty;
+    private Iterable<Tile> getBreadcrumbNeighborhood(final Tile center, final Tile next, TargetingPolicy.Type type) {
+        final Aim[] traversal = new Aim[] {
+                Aim.NORTH,
+                Aim.EAST,
+                Aim.SOUTH,
+                Aim.SOUTH,
+                Aim.WEST,
+                Aim.WEST,
+                Aim.NORTH,
+                Aim.NORTH
+        };
+        _neighborsBuffer.clear();
+        Tile lastNeighbor = center;
+        for (Aim aim : traversal) {
+            Tile neighbor = _ants.getTile(lastNeighbor, aim);
+            if (!neighbor.equals(next)) {
+                _neighborsBuffer.add(neighbor);
+            }
+            lastNeighbor = neighbor;
+        }
+        return _neighborsBuffer;
     }
 
     private static class Breadcrumb {

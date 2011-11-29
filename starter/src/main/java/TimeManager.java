@@ -21,7 +21,10 @@ public final class TimeManager {
     private String[] _stepDescriptions;
     private List<String> _wipStepDescriptions = new LinkedList<String>();
 
-    // Singleton
+    /**
+     * Budget time
+     * @param totalAllowed total budget allocation
+     */
     public TimeManager(long totalAllowed) {
         _totalAllowed = totalAllowed;
     }
@@ -41,14 +44,16 @@ public final class TimeManager {
             // First pass -- haven't figured out step allocations
             return false;
         }
-        boolean overrun = (System.currentTimeMillis() - _stepStartMs) >= _stepAllowedMs[_currentStep];
-        if (overrun) {
+        long elapsed = System.currentTimeMillis() - _stepStartMs;
+        if (elapsed > _stepAllowedMs[_currentStep]) {
             Logger log = Logger.getLogger(TimeManager.class);
-            log.info(String.format("Step '%s' (#%d of %d) overran allotted time of %d ms",
+            log.info(String.format("Step '%s' (#%d of %d) overran allotted time of %d ms by %d ms",
                                    _stepDescriptions[_currentStep], _currentStep + 1,
-                                   _stepAllowedMs.length, _stepAllowedMs[_currentStep]));
+                                   _stepAllowedMs.length, _stepAllowedMs[_currentStep],
+                                   elapsed - _stepAllowedMs[_currentStep]));
+            return true;
         }
-        return overrun;
+        return false;
     }
 
     /**

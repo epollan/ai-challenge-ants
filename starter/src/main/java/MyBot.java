@@ -1,7 +1,4 @@
-import com.sun.istack.internal.FinalArrayList;
 import org.apache.log4j.Logger;
-import org.testng.internal.Nullable;
-
 import java.io.IOException;
 import java.util.*;
 
@@ -23,16 +20,17 @@ public class MyBot extends Bot {
 
     // Policies, tuning parameters
     static {
-        TargetingPolicy.add(TargetingPolicy.Type.Food, 1, 2);
-        TargetingPolicy.add(TargetingPolicy.Type.EnemyHill, 5, 2);
-        TargetingPolicy.add(TargetingPolicy.Type.UnseenTile, 1, 1);
+        TargetingPolicy.add(TargetingPolicy.Type.Food, 1, 3, 15);
+        TargetingPolicy.add(TargetingPolicy.Type.EnemyHill, 10, 3, null);
+        TargetingPolicy.add(TargetingPolicy.Type.UnseenTile, 1, 3, 15);
     }
     private final static int TIME_ALLOCATION_PAD = 50;
     private final static int MY_HILL_RADIUS_OF_REPULSION = 6;
     private final static int UNSEEN_TILE_SAMPLING_RATE = 5;
     private final static int UNSEEN_TILE_RECALC_PERIOD = 5;
+    private final static float BREADCRUMB_FOLLOWING_WEIGHT = 0.5f;
     private final static float TARGETING_ROUTE_SORT_STEP_WEIGHT = 0.4f;
-    private final static float TARGETING_ROUTE_CALC_STEP_WEIGHT = 1.6f;
+    private final static float TARGETING_ROUTE_CALC_STEP_WEIGHT = 1.8f;
     private final static float TARGETING_ROUTE_MOVE_STEP_WEIGHT = 1.0f;
     private final static float HILL_REPULSION_STEP_WEIGHT = 1.0f;
 
@@ -58,18 +56,23 @@ public class MyBot extends Bot {
             if (_history == null) {
                 _history = new TargetingHistory(ants);
             }
-            _history.syncState(_turn);
             int managedTimeAllocation = ants.getTurnTime() - TIME_ALLOCATION_PAD;
             if (_timeManager == null || _timeManager.getTotalAllowed() != managedTimeAllocation) {
                 _timeManager = new TimeManager(managedTimeAllocation);
             }
-            _log.info(String.format("[[...turn %d...]]", _turn++));
+            _log.info(String.format("[[...turn %d...]]", _turn));
             _timeManager.turnStarted();
+
+            _history.syncState(_turn);
 
             for (Tile myHill : ants.getMyHills()) {
                 if (!_myHillRepulsions.containsKey(myHill)) {
+                    long repulseStart = System.currentTimeMillis();
                     // Aim to keep ants at least 6 moves away from my hills
                     _myHillRepulsions.put(myHill, new RepulsionPolicy(ants, myHill, MY_HILL_RADIUS_OF_REPULSION));
+                    if (_log.isDebugEnabled()) {
+                        _log.debug(String.format("Created RepulsionPolicy in %d ms", System.currentTimeMillis() - repulseStart));
+                    }
                 }
             }
 
@@ -96,8 +99,13 @@ public class MyBot extends Bot {
 
             avoidHills();
             followBreadcrumbs();
-            seekFood();
-            attackHills();
+            if (ants.getMyAnts().size() < 10) {
+                seekFood();
+                attackHills();
+            } else {
+                attackHills();
+                seekFood();
+            }
             exploreUnseenTiles();
             unblockHills();
 
@@ -111,11 +119,12 @@ public class MyBot extends Bot {
     private void concludeTurn() {
         Ants ants = getAnts();
         TargetingPolicy.clearAssignments();
+
         _timeManager.turnDone();
         long start = _timeManager.getTurnStartMs();
         long finish = System.currentTimeMillis();
         _log.info(String.format("[[ # turn %d processing took %d ms, allowed %d.  Overall remaining: %d # ]]",
-                                _turn - 1, finish - start, ants.getTurnTime(), ants.getTimeRemaining()));
+                                _turn, finish - start, ants.getTurnTime(), ants.getTimeRemaining()));
         int numDestinations = _destinations.size();
         _destinations.clear();
         int numTargetedAnts = _toMove.size();
@@ -130,6 +139,7 @@ public class MyBot extends Bot {
             // Resample unseen tiles next turn
             _unseenTiles = null;
         }
+        _turn++;
     }
 
     private void avoidHills() {
@@ -140,8 +150,12 @@ public class MyBot extends Bot {
 
     private void followBreadcrumbs() {
         // Shallow copy iteration in case an ant gets targeted
+        _timeManager.nextStep(BREADCRUMB_FOLLOWING_WEIGHT, "FollowingBreadcrumbs");
         int initialCount = _untargetedAnts.size();
         for (Tile ant : new ArrayList<Tile>(_untargetedAnts)) {
+            if (_timeManager.stepTimeOverrun()) {
+                break;
+            }
             _history.followBreadcrumb(ant, new TargetingPolicy.TargetingHandler() {
                 @Override
                 public boolean move(Tile ant, Tile nextTile, Tile finalDestination, TargetingPolicy.Type type) {
@@ -206,7 +220,7 @@ public class MyBot extends Bot {
         // in order of naive distance ranking
         Map<Tile, ArrayList<Tile>> targetsRelativeToAntByAnt = new HashMap<Tile, ArrayList<Tile>>();
         ArrayList<Tile> targetableTargets = new ArrayList<Tile>(targets);
-        for (int i = targetableTargets.size()-1; i >= 0; i--) {
+        for (int i = targetableTargets.size() - 1; i >= 0; i--) {
             if (!policy.canAssign(null, targetableTargets.get(i))) {
                 targetableTargets.remove(i);
             }
@@ -215,7 +229,19 @@ public class MyBot extends Bot {
             _log.debug(String.format("Skipping targeting of %d %s due to historical targeting routes",
                                      (targets.size() - targetableTargets.size()), policy.getType()));
         }
-        for (final Tile ant : _untargetedAnts) {
+        ArrayList<Tile> toTarget = new ArrayList<Tile>(_untargetedAnts.size());
+        if (policy.getAntLimit() != null) {
+            for (Tile ant : _untargetedAnts) {
+                toTarget.add(ant);
+                if (toTarget.size() >= policy.getAntLimit().intValue()) {
+                    break;
+                }
+            }
+        }
+        else {
+            toTarget.addAll(_untargetedAnts);
+        }
+        for (final Tile ant : toTarget) {
             ArrayList<Tile> relativeToAnt = new ArrayList<Tile>(targetableTargets);
             Collections.sort(relativeToAnt, new Comparator<Tile>() {
                 @Override
@@ -245,10 +271,15 @@ public class MyBot extends Bot {
         // Chunks of per-ant-sorted targets we'll walk through to compute A* routes
         final int targetStepSize = 3;
         for (int targetStart = 0; targetStart < targets.size(); targetStart += targetStepSize) {
-            for (final Tile ant : _untargetedAnts) {
+            boolean timedOut = false;
+            for (final Tile ant : toTarget) {
                 int thisAntsRoutes = 0;
                 if (routeCountByAnt.containsKey(ant)) {
                     thisAntsRoutes = routeCountByAnt.get(ant).intValue();
+                    if (policy.getPerAntRouteLimit() != null &&
+                        thisAntsRoutes >= policy.getPerAntRouteLimit().intValue()) {
+                        break;
+                    }
                 }
                 // Look at routes in order of targets' distance from the current ant
                 ArrayList<Tile> relativeToAnt = targetsRelativeToAntByAnt.get(ant);
@@ -284,10 +315,17 @@ public class MyBot extends Bot {
                                                      ant, target, elapsed));
                         }
                     }
-                    routeCountByAnt.put(ant, thisAntsRoutes);
+                    if (_timeManager.stepTimeOverrun()) {
+                        timedOut = true;
+                        break;
+                    }
+                }
+                routeCountByAnt.put(ant, thisAntsRoutes);
+                if (timedOut) {
+                    break;
                 }
             }
-            if (_timeManager.stepTimeOverrun()) {
+            if (timedOut) {
                 break;
             }
         }
