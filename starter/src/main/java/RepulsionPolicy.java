@@ -1,6 +1,3 @@
-import org.apache.log4j.Logger;
-import org.omg.CORBA.PUBLIC_MEMBER;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -22,7 +19,7 @@ public class RepulsionPolicy {
     // Mutiplier used to expand the radius of repulsion to come up with
     // egress route targets.
     private static final float REPULSION_RADIUS_MULTIPLIER = 1.5f;
-    private static final Logger _log = Logger.getLogger(RepulsionPolicy.class);
+    private static final LogFacade _log = LogFacade.get(RepulsionPolicy.class);
 
     private Tile _epicenter;
     private int _radiusOfRepulsion;
@@ -39,7 +36,9 @@ public class RepulsionPolicy {
         calculateEgressTargets();
     }
 
-    public Tile getEpicenter() { return _epicenter; }
+    public Tile getEpicenter() {
+        return _epicenter;
+    }
 
     private void calculateEgressTargets() {
         // Start due north of the epicenter, and walk the 'circle' (really, diamond) that's
@@ -96,10 +95,8 @@ public class RepulsionPolicy {
         for (int j = 0; j < i; j++) {
             _egressTargets.add(egressRouteCandidates.get(j).getEnd());
         }
-        if (_log.isDebugEnabled()) {
-            _log.debug(String.format("Calculated %d egress targets with radius %d for repulsion zone [%s] +/- %d",
-                                     _egressTargets.size(), egressRadius, _epicenter, _radiusOfRepulsion));
-        }
+        _log.debug("Calculated %d egress targets with radius %d for repulsion zone [%s] +/- %d",
+                   _egressTargets.size(), egressRadius, _epicenter, _radiusOfRepulsion);
     }
 
     public void evacuate(Iterable<Tile> untargeted, TimeManager manager, MovementHandler handler) {
@@ -130,10 +127,8 @@ public class RepulsionPolicy {
                 }
             }
             if (shortest != null) {
-                if (_log.isDebugEnabled()) {
-                    _log.debug(String.format("Repulsing ant at [%s] away from [%s], using route: %s",
-                                             shortest.getStart(), _epicenter, shortest));
-                }
+                _log.debug("Repulsing ant at [%s] away from [%s], using route: %s",
+                           shortest.getStart(), _epicenter, shortest);
                 handler.move(shortest.getStart(), shortest.nextTile());
             }
             if (manager.stepTimeOverrun()) {

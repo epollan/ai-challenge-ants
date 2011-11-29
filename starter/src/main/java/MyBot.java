@@ -1,4 +1,6 @@
-import org.apache.log4j.Logger;
+import java.util.logging.FileHandler;
+import java.util.logging.Logger;
+import java.util.logging.Level;
 import java.io.IOException;
 import java.util.*;
 
@@ -14,6 +16,8 @@ public class MyBot extends Bot {
      */
     public static void main(String[] args)
             throws IOException {
+        LogFacade.setProdConfig();
+        _log = LogFacade.get(MyBot.class);
         _log.info("[[GAME START]]");
         new MyBot().readSystemInput();
     }
@@ -24,6 +28,7 @@ public class MyBot extends Bot {
         TargetingPolicy.add(TargetingPolicy.Type.EnemyHill, 10, 3, null);
         TargetingPolicy.add(TargetingPolicy.Type.UnseenTile, 1, 3, 15);
     }
+
     private final static int TIME_ALLOCATION_PAD = 50;
     private final static int MY_HILL_RADIUS_OF_REPULSION = 6;
     private final static int UNSEEN_TILE_SAMPLING_RATE = 5;
@@ -40,7 +45,7 @@ public class MyBot extends Bot {
     private Set<Tile> _unseenTiles = null;
     private final Map<Tile, RepulsionPolicy> _myHillRepulsions = new HashMap<Tile, RepulsionPolicy>();
     private int _turn = 0;
-    private final static Logger _log = Logger.getLogger(MyBot.class);
+    private static LogFacade _log;
     private TimeManager _timeManager = null;
     private TargetingHistory _history;
 
@@ -70,9 +75,7 @@ public class MyBot extends Bot {
                     long repulseStart = System.currentTimeMillis();
                     // Aim to keep ants at least 6 moves away from my hills
                     _myHillRepulsions.put(myHill, new RepulsionPolicy(ants, myHill, MY_HILL_RADIUS_OF_REPULSION));
-                    if (_log.isDebugEnabled()) {
-                        _log.debug(String.format("Created RepulsionPolicy in %d ms", System.currentTimeMillis() - repulseStart));
-                    }
+                    _log.debug("Created RepulsionPolicy in %d ms", System.currentTimeMillis() - repulseStart);
                 }
             }
 
@@ -189,9 +192,7 @@ public class MyBot extends Bot {
     private void unblockHills() {
         long start = System.currentTimeMillis();
         // local references need to be final to be passed to anonymous inner class
-        if (_log.isDebugEnabled()) {
-            _log.debug(String.format("Checking for own-hill repulsion on %d untargeted ants", _untargetedAnts.size()));
-        }
+        _log.debug("Checking for own-hill repulsion on %d untargeted ants", _untargetedAnts.size());
         _timeManager.nextStep(HILL_REPULSION_STEP_WEIGHT, "HillRepulsion");
         for (final RepulsionPolicy policy : _myHillRepulsions.values()) {
             policy.evacuate(_untargetedAnts,
@@ -203,10 +204,8 @@ public class MyBot extends Bot {
                                 }
                             });
         }
-        if (_log.isDebugEnabled()) {
-            _log.debug(String.format("Unblocked hills, %d elapsed, %d ms remaining in turn",
-                                     System.currentTimeMillis() - start, getAnts().getTimeRemaining()));
-        }
+        _log.debug("Unblocked hills, %d elapsed, %d ms remaining in turn",
+                   System.currentTimeMillis() - start, getAnts().getTimeRemaining());
     }
 
     private void targetTiles(Collection<Tile> targets, TargetingPolicy policy) {
@@ -225,9 +224,9 @@ public class MyBot extends Bot {
                 targetableTargets.remove(i);
             }
         }
-        if (_log.isDebugEnabled() && targetableTargets.size() < targets.size()) {
-            _log.debug(String.format("Skipping targeting of %d %s due to historical targeting routes",
-                                     (targets.size() - targetableTargets.size()), policy.getType()));
+        if (targetableTargets.size() < targets.size()) {
+            _log.debug("Skipping targeting of %d %s due to historical targeting routes",
+                       (targets.size() - targetableTargets.size()), policy.getType());
         }
         ArrayList<Tile> toTarget = new ArrayList<Tile>(_untargetedAnts.size());
         if (policy.getAntLimit() != null) {
@@ -237,8 +236,7 @@ public class MyBot extends Bot {
                     break;
                 }
             }
-        }
-        else {
+        } else {
             toTarget.addAll(_untargetedAnts);
         }
         for (final Tile ant : toTarget) {
@@ -294,26 +292,18 @@ public class MyBot extends Bot {
                     try {
                         AStarRoute route = new AStarRoute(ants, ant, target);
                         routes.add(route);
-                        if (_log.isDebugEnabled()) {
-                            _log.debug(String.format("%s route candidate for ant [%s] to tile [%s] (dist=%d): %s",
-                                                     policy, ant, target, ants.getDistance(ant, target), route));
-                        }
+                        _log.debug("%s route candidate for ant [%s] to tile [%s] (dist=%d): %s",
+                                   policy, ant, target, ants.getDistance(ant, target), route);
                         ++thisAntsRoutes;
                         if (policy.getPerAntRouteLimit() != null &&
                             thisAntsRoutes >= policy.getPerAntRouteLimit().intValue()) {
-                            if (_log.isDebugEnabled()) {
-                                _log.debug(String.format(
-                                        "Capping routes for ant [%s] at %d under %s consideration, %d ms remaining...",
-                                        ant, thisAntsRoutes, policy, ants.getTimeRemaining()));
-                            }
+                            _log.debug("Capping routes for ant [%s] at %d under %s consideration, %d ms remaining...",
+                                       ant, thisAntsRoutes, policy, ants.getTimeRemaining());
                             break;
                         }
                     } catch (NoRouteException ex) {
-                        if (_log.isDebugEnabled()) {
-                            long elapsed = System.currentTimeMillis() - routeStart;
-                            _log.debug(String.format("Cannot route from [%s] to [%s], spent %d ms looking",
-                                                     ant, target, elapsed));
-                        }
+                        _log.debug("Cannot route from [%s] to [%s], spent %d ms looking",
+                                   ant, target, System.currentTimeMillis() - routeStart);
                     }
                     if (_timeManager.stepTimeOverrun()) {
                         timedOut = true;
@@ -330,10 +320,8 @@ public class MyBot extends Bot {
             }
         }
         int candidateAnts = _untargetedAnts.size();
-        if (_log.isDebugEnabled()) {
-            _log.debug(String.format("Weighing %,d routes using %s, given %d candidate ants and %,d targets",
-                                     routes.size(), policy, candidateAnts, targets.size()));
-        }
+        _log.debug("Weighing %,d routes using %s, given %d candidate ants and %,d targets",
+                   routes.size(), policy, candidateAnts, targets.size());
         _timeManager.nextStep(TARGETING_ROUTE_MOVE_STEP_WEIGHT,
                               policy.toString() + ":Movement");
         if (routes.isEmpty()) {
@@ -354,14 +342,10 @@ public class MyBot extends Bot {
                 policy.assign(route.getStart(), route.getEnd());
                 _history.create(route.getStart(), route.getEnd(), policy.getType(), route);
                 --candidateAnts;
-                if (_log.isDebugEnabled()) {
-                    _log.debug(String.format("Move successful -- route assigned using %s", policy));
-                }
+                _log.debug(String.format("Move successful -- route assigned using %s", policy));
                 if (policy.totalAssignmentsLimitReached(targets.size())) {
-                    if (_log.isDebugEnabled()) {
-                        _log.debug(String.format("Assigned the maximum number of %s routes (%s)",
-                                                 policy, policy.getTotalAssignmentsLimit(targets.size())));
-                    }
+                    _log.debug("Assigned the maximum number of %s routes (%s)",
+                               policy, policy.getTotalAssignmentsLimit(targets.size()));
                     break;
                 }
             }
@@ -371,10 +355,8 @@ public class MyBot extends Bot {
             _log.info(String.format("No %s targeting movement for %d ants.",
                                     policy, candidateAnts));
         }
-        if (_log.isDebugEnabled()) {
-            _log.debug(String.format("%s targeting complete, %d elapsed, %d ms remaining in turn...",
-                                     policy, System.currentTimeMillis() - start, getAnts().getTimeRemaining()));
-        }
+        _log.debug("%s targeting complete, %d elapsed, %d ms remaining in turn...",
+                   policy, System.currentTimeMillis() - start, getAnts().getTimeRemaining());
     }
 
     private boolean moveInDirection(Tile antLoc, Aim direction) {
@@ -386,9 +368,7 @@ public class MyBot extends Bot {
             _destinations.add(newLoc);
             _toMove.add(antLoc);
             _untargetedAnts.remove(antLoc);
-            if (_log.isDebugEnabled()) {
-                _log.debug(String.format("Moving ant at [%s] %s to [%s]", antLoc, direction, newLoc));
-            }
+            _log.debug("Moving ant at [%s] %s to [%s]", antLoc, direction, newLoc);
             return true;
         } else {
             return false;

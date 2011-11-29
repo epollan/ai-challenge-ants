@@ -1,5 +1,3 @@
-import org.apache.log4j.Logger;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -15,7 +13,7 @@ public class TargetingHistory {
     private int _turn;
     private final Ants _ants;
     private final ArrayList<Tile> _neighborsBuffer = new ArrayList<Tile>(8);
-    private static final Logger _log = Logger.getLogger(TargetingHistory.class);
+    private static final LogFacade _log = LogFacade.get(TargetingHistory.class);
 
     public TargetingHistory(Ants ants) {
         _ants = ants;
@@ -91,10 +89,8 @@ public class TargetingHistory {
                 try {
                     AStarRoute route = new AStarRoute(_ants, ant, influence.Destination);
                     if (handler.move(ant, route.nextTile(), route.getEnd(), influence.Type)) {
-                        if (_log.isDebugEnabled()) {
-                            _log.debug(String.format("Picked up %s targeting for [%s] based on route influence",
-                                                     influence.Type, influence.Destination));
-                        }
+                        _log.debug("Picked up %s targeting for [%s] based on route influence",
+                                   influence.Type, influence.Destination);
                         create(ant, influence.Destination, influence.Type, route);
                     }
                 } catch (NoRouteException ex) {
@@ -106,14 +102,10 @@ public class TargetingHistory {
             RoutedBreadcrumb routed = (RoutedBreadcrumb) crumb;
             if (handler.move(ant, routed.Next, routed.Destination, routed.Type)) {
                 routed.UsageCount++;
-                if (_log.isDebugEnabled()) {
-                    _log.debug(String.format("Leveraging previously computed route for %s at [%s]",
-                                             routed.Type, routed.Destination));
-                }
+                _log.debug("Leveraging previously computed route for %s at [%s]",
+                           routed.Type, routed.Destination);
             } else {
-                if (_log.isDebugEnabled()) {
-                    _log.debug(String.format("Cannot follow routed breadcrumb from [%s] to [%s]", ant, routed.Next));
-                }
+                _log.debug("Cannot follow routed breadcrumb from [%s] to [%s]", ant, routed.Next);
             }
         }
     }

@@ -1,11 +1,10 @@
-import org.apache.log4j.BasicConfigurator;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeSuite;
-
 import java.io.BufferedReader;
 import java.io.StringReader;
 import java.util.HashMap;
 import java.util.Map;
+
 
 
 /**
@@ -18,8 +17,8 @@ public class BaseTest {
     protected TimeManager _dummyManager;
 
     @BeforeClass
-    public void configureLogging() {
-        BasicConfigurator.configure();
+    public void setup() {
+        LogFacade.setTestConfig();
         _dummyManager = new TimeManager(10000);
         _dummyManager.nextStep();
         _dummyManager.nextStep();
