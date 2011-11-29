@@ -80,19 +80,23 @@ public class RepulsionPolicy {
         // that are less than EGRESS_MEDIAN_THRESHOLD times that distance
         Collections.sort(egressRouteCandidates);
         int medianPos = (int) Math.floor(egressRouteCandidates.size() / 2);
-        int medianDistance = egressRouteCandidates.get(medianPos).getDistance();
-        int thresholdDistance = (int) Math.ceil(medianDistance * EGRESS_MEDIAN_THRESHOLD);
-        int i = medianPos + 1;
-        for (; i < egressRouteCandidates.size(); i++) {
-            if (egressRouteCandidates.get(i).getDistance() >= thresholdDistance) {
-                break;
+        int targetCount = 0;
+        if (egressRouteCandidates.size() > 0) {
+            int medianDistance = egressRouteCandidates.get(medianPos).getDistance();
+            int thresholdDistance = (int) Math.ceil(medianDistance * EGRESS_MEDIAN_THRESHOLD);
+            int i = medianPos + 1;
+            for (; i < egressRouteCandidates.size(); i++) {
+                if (egressRouteCandidates.get(i).getDistance() >= thresholdDistance) {
+                    break;
+                }
             }
+            targetCount = i;
         }
 
         // Valid targets are those whose distance is less than the median egress
         // route distance times the EGRESS_MEDIAN_THRESHOLD
-        _egressTargets = new ArrayList<Tile>(i);
-        for (int j = 0; j < i; j++) {
+        _egressTargets = new ArrayList<Tile>(targetCount);
+        for (int j = 0; j < targetCount; j++) {
             _egressTargets.add(egressRouteCandidates.get(j).getEnd());
         }
         _log.debug("Calculated %d egress targets with radius %d for repulsion zone [%s] +/- %d",

@@ -105,7 +105,8 @@ public class TargetingHistory {
                 _log.debug("Leveraging previously computed route for %s at [%s]",
                            routed.Type, routed.Destination);
             } else {
-                _log.debug("Cannot follow routed breadcrumb from [%s] to [%s]", ant, routed.Next);
+                _log.debug("Cannot follow routed breadcrumb from [%s] to [%s], removing...", ant, routed.Next);
+                _map.remove(ant);
             }
         }
     }

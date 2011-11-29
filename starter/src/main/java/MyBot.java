@@ -26,6 +26,7 @@ public class MyBot extends Bot {
     static {
         TargetingPolicy.add(TargetingPolicy.Type.Food, 1, 3, 15);
         TargetingPolicy.add(TargetingPolicy.Type.EnemyHill, 10, 3, null);
+        TargetingPolicy.add(TargetingPolicy.Type.EnemyAnt, 3, 3, 15);
         TargetingPolicy.add(TargetingPolicy.Type.UnseenTile, 1, 3, 15);
     }
 
@@ -109,6 +110,7 @@ public class MyBot extends Bot {
                 attackHills();
                 seekFood();
             }
+            attackAnts();
             exploreUnseenTiles();
             unblockHills();
 
@@ -176,13 +178,15 @@ public class MyBot extends Bot {
     }
 
     private void seekFood() {
-        // find close food
         targetTiles(getAnts().getFoodTiles(), TargetingPolicy.get(TargetingPolicy.Type.Food));
     }
 
     private void attackHills() {
-        // attack hills
         targetTiles(getAnts().getEnemyHills(), TargetingPolicy.get(TargetingPolicy.Type.EnemyHill));
+    }
+
+    private void attackAnts() {
+        targetTiles(getAnts().getEnemyAnts(), TargetingPolicy.get(TargetingPolicy.Type.EnemyAnt));
     }
 
     private void exploreUnseenTiles() {
