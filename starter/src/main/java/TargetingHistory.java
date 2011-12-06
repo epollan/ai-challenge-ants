@@ -11,27 +11,34 @@ public class TargetingHistory {
 
     private final Map<Tile, Breadcrumb> _map = new HashMap<Tile, Breadcrumb>();
     private int _turn;
-    private final Ants _ants;
     private final ArrayList<Tile> _neighborsBuffer = new ArrayList<Tile>(8);
     private static final LogFacade _log = LogFacade.get(TargetingHistory.class);
 
-    public TargetingHistory(Ants ants) {
-        _ants = ants;
+    public static final TargetingHistory Instance = new TargetingHistory();
+
+    private TargetingHistory() {
     }
 
     public void syncState(int turn) {
         _turn = turn;
         for (Map.Entry<Tile, Breadcrumb> entry : new ArrayList<Map.Entry<Tile, Breadcrumb>>(_map.entrySet())) {
+            if (entry.getValue().isExpired(_turn)) {
+                _map.remove(entry.getKey());
+                continue;
+            }
             boolean present = true;
             switch (entry.getValue().Type) {
                 case EnemyAnt:
-                    present = _ants.getEnemyAnts().contains(entry.getValue().Destination);
+                    present = Ants.Instance.getEnemyAnts().contains(entry.getValue().Destination);
                     break;
                 case EnemyHill:
-                    present = _ants.getEnemyHills().contains(entry.getValue().Destination);
+                    present = Ants.Instance.getEnemyHills().contains(entry.getValue().Destination);
                     break;
                 case Food:
-                    present = _ants.getFoodTiles().contains(entry.getValue().Destination);
+                    present = Ants.Instance.getFoodTiles().contains(entry.getValue().Destination);
+                    break;
+                case UnseenTile:
+                    present = Ants.Instance.isVisible(entry.getValue().Destination);
                     break;
                 default:
             }
@@ -44,9 +51,15 @@ public class TargetingHistory {
     public void create(Tile current,
                        Tile destination,
                        TargetingPolicy.Type type,
-                       AStarRoute route) {
+                       AStarRoute route,
+                       Integer expiresAfter,
+                       boolean skipStart) {
         final Tile influencer = current;
         for (Tile nextHop : route.routeTiles()) {
+            if (skipStart) {
+                skipStart = false;
+                continue;
+            }
             if (nextHop.equals(destination)) {
                 break;
             }
@@ -56,6 +69,7 @@ public class TargetingHistory {
             breadcrumb.TurnCreated = _turn;
             breadcrumb.Next = nextHop;
             breadcrumb.UsageCount = 0;
+            breadcrumb.ExpiresAfter = expiresAfter;
             _map.put(current, breadcrumb);
             for (final Tile neighbor : getBreadcrumbNeighborhood(current, nextHop, type)) {
                 Breadcrumb preexisting = _map.get(neighbor);
@@ -65,6 +79,7 @@ public class TargetingHistory {
                     hint.Type = type;
                     hint.TurnCreated = _turn;
                     hint.RouteInfluencer = influencer;
+                    hint.ExpiresAfter = expiresAfter;
                     _map.put(neighbor, hint);
                 }
             }
@@ -87,11 +102,11 @@ public class TargetingHistory {
             } else if (!ant.equals(influence.Destination)) {
                 // We need to calculate our own route from this tile
                 try {
-                    AStarRoute route = new AStarRoute(_ants, ant, influence.Destination);
+                    AStarRoute route = new AStarRoute(ant, influence.Destination);
                     if (handler.move(ant, route.nextTile(), route.getEnd(), influence.Type)) {
                         _log.debug("Picked up %s targeting for [%s] based on route influence",
                                    influence.Type, influence.Destination);
-                        create(ant, influence.Destination, influence.Type, route);
+                        create(ant, influence.Destination, influence.Type, route, influence.ExpiresAfter, false);
                     }
                 } catch (NoRouteException ex) {
                     _log.info(String.format("Cannot route from [%s] to breadcrumb-influenced destination [%s]",
@@ -125,7 +140,7 @@ public class TargetingHistory {
         _neighborsBuffer.clear();
         Tile lastNeighbor = center;
         for (Aim aim : traversal) {
-            Tile neighbor = _ants.getTile(lastNeighbor, aim);
+            Tile neighbor = Ants.Instance.getTile(lastNeighbor, aim);
             if (!neighbor.equals(next)) {
                 _neighborsBuffer.add(neighbor);
             }
@@ -138,6 +153,10 @@ public class TargetingHistory {
         public Tile Destination;
         public TargetingPolicy.Type Type;
         public int TurnCreated;
+        public Integer ExpiresAfter = null;
+        public boolean isExpired(int turn) {
+            return (ExpiresAfter != null) ? (TurnCreated + ExpiresAfter.intValue()) < turn : false;
+        }
     }
 
     private static class UnroutedBreadcrumb extends Breadcrumb {

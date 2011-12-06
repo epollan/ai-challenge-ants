@@ -18,7 +18,8 @@ public class TargetingPolicy {
         Food,
         EnemyHill,
         EnemyAnt,
-        UnseenTile
+        UnseenTile,
+        Unmanaged
     }
 
     private static Map<Type, TargetingPolicy> _policies = new HashMap<Type, TargetingPolicy>();
@@ -35,6 +36,11 @@ public class TargetingPolicy {
 
     public static void add(Type type, int perTargetAssignmentLimit, Integer perAntRouteLimit, Integer antLimit) {
         _policies.put(type, new TargetingPolicy(type, perTargetAssignmentLimit, perAntRouteLimit, antLimit));
+    }
+
+    private static TargetingPolicy UNMANAGED = new TargetingPolicy(Type.Unmanaged, Integer.MAX_VALUE, null, null);
+    static {
+        _policies.put(Type.Unmanaged, UNMANAGED);
     }
 
     public static TargetingPolicy get(Type type) {

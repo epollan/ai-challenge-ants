@@ -1,9 +1,15 @@
+import org.apache.log4j.varia.NullAppender;
+import org.yaml.snakeyaml.tokens.AnchorToken;
+
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Represents a policy of repulsion from some point on the map
@@ -21,187 +27,76 @@ public class RepulsionPolicy {
     private static final float REPULSION_RADIUS_MULTIPLIER = 1.5f;
     private static final LogFacade _log = LogFacade.get(RepulsionPolicy.class);
 
-    private Tile _epicenter;
-    private int _radiusOfRepulsion;
-    private List<Tile> _egressTargets;
-    private Ants _ants;
-    private final int _maximumRadius;
+    private final Tile _epicenter;
+    private final int _radiusOfRepulsion;
+    private final DefenseZone _defenseZone;
+    private int _sampleOffset = 0;
 
-    public RepulsionPolicy(Ants ants, Tile epicenter, int radiusOfRepulsion) {
-        _ants = ants;
-        // width/height of, e.g. 11, means our max radius is 5 ((11-1)/2).
-        _maximumRadius = (int) Math.floor((Math.min(_ants.getRows(), _ants.getCols()) - 1) / 2.0);
+    public RepulsionPolicy(Tile epicenter, int radiusOfRepulsion) {
         _epicenter = epicenter;
-        _radiusOfRepulsion = Math.min(radiusOfRepulsion, _maximumRadius);
-        calculateEgressTargets();
+        _radiusOfRepulsion = Math.min(radiusOfRepulsion, Circumference.getMaximumRadius());
+        _defenseZone = new DefenseZone(epicenter,  radiusOfRepulsion+1);
     }
 
     public Tile getEpicenter() {
         return _epicenter;
     }
 
-    private void calculateEgressTargets() {
-        // Start due north of the epicenter, and walk the 'circle' (really, diamond) that's
-        // radiusOfRepulsion * REPULSION_RADIUS_MULTIPLIER from the epicenter
-        int egressRadius = (int) Math.ceil(_radiusOfRepulsion * REPULSION_RADIUS_MULTIPLIER);
-        egressRadius = Math.min(egressRadius, _maximumRadius);
-        List<AStarRoute> egressRouteCandidates = new ArrayList<AStarRoute>(egressRadius * 4);
-
-        // Direction changes will correspond to due east/south/west/north
-        Map<Tile, CircumferenceDirection> directionChanges = new HashMap<Tile, CircumferenceDirection>();
-        directionChanges.put(getTile(_epicenter, -egressRadius, 0),
-                             CircumferenceDirection.SouthEast);
-        directionChanges.put(getTile(_epicenter, 0, egressRadius),
-                             CircumferenceDirection.SouthWest);
-        directionChanges.put(getTile(_epicenter, egressRadius, 0),
-                             CircumferenceDirection.NorthWest);
-        directionChanges.put(getTile(_epicenter, 0, -egressRadius),
-                             CircumferenceDirection.NorthEast);
-
-        // Start north, heading southeast
-        Tile start = getTile(_epicenter, -egressRadius, 0);
-        CircumferenceDirection currentDirection = CircumferenceDirection.SouthEast;
-        Tile current = start;
-        do {
-            if (_ants.getIlk(current).isPassable()) {
-                try {
-                    egressRouteCandidates.add(new AStarRoute(_ants, _epicenter, current));
-                } catch (NoRouteException ex) {
-                }
-            }
-            current = getTile(current, currentDirection.getRowDelta(), currentDirection.getColDelta());
-            CircumferenceDirection newDirection = directionChanges.get(current);
-            if (newDirection != null) {
-                currentDirection = newDirection;
-            }
-        } while (!start.equals(current));
-
-        // Find the median route distance and extract the endpoints of all those routes
-        // that are less than EGRESS_MEDIAN_THRESHOLD times that distance
-        Collections.sort(egressRouteCandidates);
-        int medianPos = (int) Math.floor(egressRouteCandidates.size() / 2);
-        int targetCount = 0;
-        if (egressRouteCandidates.size() > 0) {
-            int medianDistance = egressRouteCandidates.get(medianPos).getDistance();
-            int thresholdDistance = (int) Math.ceil(medianDistance * EGRESS_MEDIAN_THRESHOLD);
-            int i = medianPos + 1;
-            for (; i < egressRouteCandidates.size(); i++) {
-                if (egressRouteCandidates.get(i).getDistance() >= thresholdDistance) {
-                    break;
-                }
-            }
-            targetCount = i;
+    public void evacuate(Set<Tile> untargeted, TimeManager manager, MovementHandler handler) {
+        if (untargeted.size() == 0) {
+            // Nothing to evacuate
+            return;
         }
-
-        // Valid targets are those whose distance is less than the median egress
-        // route distance times the EGRESS_MEDIAN_THRESHOLD
-        _egressTargets = new ArrayList<Tile>(targetCount);
-        for (int j = 0; j < targetCount; j++) {
-            _egressTargets.add(egressRouteCandidates.get(j).getEnd());
-        }
-        _log.debug("Calculated %d egress targets with radius %d for repulsion zone [%s] +/- %d",
-                   _egressTargets.size(), egressRadius, _epicenter, _radiusOfRepulsion);
-    }
-
-    public void evacuate(Iterable<Tile> untargeted, TimeManager manager, MovementHandler handler) {
-        List<EgressCandidate> toEvacuate = new LinkedList<EgressCandidate>();
+        // Only evacuate those ants within the radius of repulsion
+        Set<Tile> toEvacuate = new HashSet<Tile>();
         for (Tile ant : untargeted) {
-            int distance = _ants.getDistance(_epicenter, ant);
+            int distance = Ants.Instance.getDistance(_epicenter, ant);
             if (distance <= _radiusOfRepulsion) {
-                toEvacuate.add(new EgressCandidate(ant, distance));
+                toEvacuate.add(ant);
             }
         }
-        // Sort ants to be evacuated by distance from epicenter, with those
-        // furthest first.
-        Collections.sort(toEvacuate);
-        for (EgressCandidate ant : toEvacuate) {
-            // Sort to handle blocking -- might need this to fall-back on *slightly*
-            // less optimal egress routes...
+        _log.debug("Hill [%s] has %d ant(s) to be repulsed", _epicenter, toEvacuate.size());
+
+        int numStrongpoints = _defenseZone.getStrongpoints().size();
+        int sampleSize = (int)Math.floor(numStrongpoints / untargeted.size());
+        if (sampleSize == 0) {
+            // Simple size should at least be one so we can progress through the strongpoints
+            sampleSize = 1;
+        }
+        boolean timedout = false;
+        for (int index = _sampleOffset++ % numStrongpoints;
+                index < numStrongpoints && !timedout;
+                index += sampleSize) {
+            // Shallow copy -- successful move will remove the ant from the to-be-evacuated set
             AStarRoute shortest = null;
-            for (Tile target : _egressTargets) {
+            for (Tile ant : new ArrayList<Tile>(toEvacuate)) {
                 if (manager.stepTimeOverrun()) {
+                    timedout = true;
                     break;
                 }
                 try {
-                    AStarRoute route = new AStarRoute(_ants, ant._ant, target);
+                    AStarRoute route = new AStarRoute(ant, _defenseZone.getStrongpoints().get(index));
                     if (shortest == null || route.getDistance() < shortest.getDistance()) {
                         shortest = route;
                     }
-                } catch (NoRouteException ex) {
                 }
+                catch (NoRouteException ex) {}
             }
-            if (shortest != null) {
+            if (shortest != null && handler.move(shortest.getStart(), shortest.nextTile())) {
+                TargetingHistory.Instance.create(shortest.getStart(),
+                                                 shortest.getEnd(),
+                                                 TargetingPolicy.Type.Unmanaged,
+                                                 shortest,
+                                                 shortest.getDistance(),
+                                                 true);
+                toEvacuate.remove(shortest.getStart());
                 _log.debug("Repulsing ant at [%s] away from [%s], using route: %s",
                            shortest.getStart(), _epicenter, shortest);
-                handler.move(shortest.getStart(), shortest.nextTile());
+
             }
-            if (manager.stepTimeOverrun()) {
+            if (toEvacuate.size() == 0) {
                 break;
             }
-        }
-    }
-
-    private Tile getTile(Tile start, int rowDelta, int colDelta) {
-        int row = start.getRow() + rowDelta;
-        if (row < 0) {
-            row += _ants.getRows();
-        } else if (row >= _ants.getRows()) {
-            row -= _ants.getRows();
-        }
-        int col = start.getCol() + colDelta;
-        if (col < 0) {
-            col += _ants.getCols();
-        } else if (col >= _ants.getCols()) {
-            col -= _ants.getCols();
-        }
-        return new Tile(row, col);
-    }
-
-    // Offsets to travel in a given direction along the "circumference" of a
-    // "circle" (diamond)
-    private static enum CircumferenceDirection {
-
-        SouthEast(1, 1),
-        SouthWest(1, -1),
-        NorthWest(-1, -1),
-        NorthEast(-1, 1);
-
-        private final int _rowDelta;
-        private final int _colDelta;
-
-        CircumferenceDirection(int rowDelta, int colDelta) {
-            _rowDelta = rowDelta;
-            _colDelta = colDelta;
-        }
-
-        int getRowDelta() {
-            return _rowDelta;
-        }
-
-        int getColDelta() {
-            return _colDelta;
-        }
-    }
-
-    private class EgressCandidate implements Comparable<EgressCandidate> {
-
-        private Integer _distFromEpicenter;
-        private Tile _ant;
-
-        public EgressCandidate(Tile ant, int distance) {
-            _ant = ant;
-            _distFromEpicenter = distance;
-        }
-
-        public int compareTo(EgressCandidate other) {
-            // Negate all comparisons -- we want those "furthest" from the epicenter
-            // to sort lowest
-            int comparison = -(_distFromEpicenter.compareTo(other._distFromEpicenter));
-            if (comparison == 0) {
-                // Same distance, discriminate based upon Tile location
-                comparison = -(_ant.compareTo(other._ant));
-            }
-            return comparison;
         }
     }
 }

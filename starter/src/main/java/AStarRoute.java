@@ -14,15 +14,13 @@ import java.util.Set;
  */
 public class AStarRoute extends Route {
 
-    private Ants _ants;
     private List<Tile> _route;
     private Tile _nextTile;
     private ArrayList<Tile> _neighborsBuffer = new ArrayList<Tile>(4); // at most 4 neighbors
 
-    public AStarRoute(Ants ants, Tile start, Tile end)
+    public AStarRoute(Tile start, Tile end)
             throws NoRouteException {
         super(start, end);
-        _ants = ants;
         _route = calculateRoute();
         _distance = _route.size();
         if (_nextTile == null) {
@@ -105,7 +103,7 @@ public class AStarRoute extends Route {
 
     // Best case distance heuristic, dX + dY
     private double heuristic(Tile start, Tile goal) {
-        return _ants.getDistance(start, goal);
+        return Ants.Instance.getDistance(start, goal);
     }
 
     // Backtrack from the currentNode using the cameFrom map to construct
@@ -126,11 +124,11 @@ public class AStarRoute extends Route {
     private Iterable<Tile> neighbors(Tile t) {
         _neighborsBuffer.clear();
         for (Aim aim : Aim.values()) {
-            Tile neighbor = _ants.getTile(t, aim);
+            Tile neighbor = Ants.Instance.getTile(t, aim);
             // We can travel to a neighboring tile if it's unoccupied, or if it's our
             // end goal
             //if (_ants.getIlk(neighbor).isUnoccupied() || neighbor.equals(_end)) {
-            if (_ants.getIlk(neighbor).isPassable() || neighbor.equals(_end)) {
+            if (Ants.Instance.getIlk(neighbor).isPassable() || neighbor.equals(_end)) {
                 _neighborsBuffer.add(neighbor);
             }
         }

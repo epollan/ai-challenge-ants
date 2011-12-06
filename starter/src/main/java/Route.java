@@ -1,7 +1,7 @@
 /**
  * Represents a route from one tile to another.
  */
-public class Route implements Comparable<Route> {
+public class Route implements MedianThreshold.Measurable<Route> {
 
     protected final Tile _start;
     protected final Tile _end;
@@ -34,7 +34,16 @@ public class Route implements Comparable<Route> {
     
     @Override
     public int compareTo(Route route) {
-        return _distance - route._distance;
+        int comparison = Comparisons.compare(_distance, route._distance);
+        if (comparison == 0) {
+            comparison = Comparisons.compare(_hash, route._hash);
+        }
+        return comparison;
+    }
+
+    @Override
+    public int getMetric() {
+        return _distance;
     }
     
     @Override

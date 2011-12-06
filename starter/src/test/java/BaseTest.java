@@ -28,7 +28,7 @@ public class BaseTest {
         _dummyManager.nextStep();
     }
 
-    protected Ants getAnts(String map)
+    protected void buildState(String map)
             throws Exception {
         BufferedReader reader = new BufferedReader(new StringReader(map));
         int rows = 0, cols = -1;
@@ -60,10 +60,9 @@ public class BaseTest {
             }
             rows++;
         }
-        Ants a = new Ants(0, 0, rows, cols, 0, 50, 0, 0);
+        Ants.initialize(0, 0, rows, cols, 0, 50, 0, 0);
         for (Map.Entry<Tile, Ilk> e : layout.entrySet()) {
-            a.update(e.getValue(), e.getKey());
+            Ants.Instance.update(e.getValue(), e.getKey());
         }
-        return a;
     }
 }

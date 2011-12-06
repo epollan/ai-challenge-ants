@@ -31,9 +31,9 @@ public class RepulsionTest extends BaseTest {
                 "........................\n" +
                 "........................";
         // 4,8
-        Ants a = getAnts(map);
-        RepulsionPolicy policy = new RepulsionPolicy(a, new Tile(6, 8), 4);
-        policy.evacuate(a.getMyAnts(),
+        buildState(map);
+        RepulsionPolicy policy = new RepulsionPolicy(new Tile(6, 8), 4);
+        policy.evacuate(Ants.Instance.getMyAnts(),
                         _dummyManager,
                         new MovementHandler() {
                             @Override

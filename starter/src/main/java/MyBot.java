@@ -48,7 +48,6 @@ public class MyBot extends Bot {
     private int _turn = 0;
     private static LogFacade _log;
     private TimeManager _timeManager = null;
-    private TargetingHistory _history;
 
     /**
      * For every ant check every direction in fixed order (N, E, S, W) and move it if the tile is
@@ -56,54 +55,11 @@ public class MyBot extends Bot {
      */
     @Override
     public void doTurn() {
-        Ants ants = getAnts();
         try {
-            _untargetedAnts.addAll(ants.getMyAnts());
-            if (_history == null) {
-                _history = new TargetingHistory(ants);
-            }
-            int managedTimeAllocation = ants.getTurnTime() - TIME_ALLOCATION_PAD;
-            if (_timeManager == null || _timeManager.getTotalAllowed() != managedTimeAllocation) {
-                _timeManager = new TimeManager(managedTimeAllocation);
-            }
-            _log.info(String.format("[[...turn %d...]]", _turn));
-            _timeManager.turnStarted();
-
-            _history.syncState(_turn);
-
-            for (Tile myHill : ants.getMyHills()) {
-                if (!_myHillRepulsions.containsKey(myHill)) {
-                    long repulseStart = System.currentTimeMillis();
-                    // Aim to keep ants at least 6 moves away from my hills
-                    _myHillRepulsions.put(myHill, new RepulsionPolicy(ants, myHill, MY_HILL_RADIUS_OF_REPULSION));
-                    _log.debug("Created RepulsionPolicy in %d ms", System.currentTimeMillis() - repulseStart);
-                }
-            }
-
-            if (_unseenTiles == null) {
-                _unseenTiles = new HashSet<Tile>();
-                // Sparsely sample the board for unseen tiles
-                for (int row = 0; row < ants.getRows(); row += UNSEEN_TILE_SAMPLING_RATE) {
-                    for (int col = 0; col < ants.getCols(); col += UNSEEN_TILE_SAMPLING_RATE) {
-                        Tile t = new Tile(row, col);
-                        if (!ants.isVisible(t) && ants.getIlk(t) != Ilk.WATER) {
-                            _unseenTiles.add(t);
-                        }
-                    }
-                }
-            } else {
-                // remove any tiles that can be seen, run each turn
-                for (Iterator<Tile> locIter = _unseenTiles.iterator(); locIter.hasNext(); ) {
-                    Tile next = locIter.next();
-                    if (ants.isVisible(next) || ants.getIlk(next) == Ilk.WATER) {
-                        locIter.remove();
-                    }
-                }
-            }
 
             avoidHills();
             followBreadcrumbs();
-            if (ants.getMyAnts().size() < 10) {
+            if (Ants.Instance.getMyAnts().size() < 10) {
                 seekFood();
                 attackHills();
             } else {
@@ -121,15 +77,61 @@ public class MyBot extends Bot {
         }
     }
 
+    private void startTurn() {
+        _log.info(String.format("[[...turn %d...]]", _turn));
+
+        // Track targeted ants through turn
+        _untargetedAnts.addAll(Ants.Instance.getMyAnts());
+
+        // Time management
+        int managedTimeAllocation = Ants.Instance.getTurnTime() - TIME_ALLOCATION_PAD;
+        if (_timeManager == null || _timeManager.getTotalAllowed() != managedTimeAllocation) {
+            _timeManager = new TimeManager(managedTimeAllocation);
+        }
+        _timeManager.turnStarted();
+
+        TargetingHistory.Instance.syncState(_turn);
+
+        for (Tile myHill : Ants.Instance.getMyHills()) {
+            if (!_myHillRepulsions.containsKey(myHill)) {
+                long repulseStart = System.currentTimeMillis();
+                // Aim to keep ants at least 6 moves away from my hills
+                _myHillRepulsions.put(myHill, new RepulsionPolicy(myHill, MY_HILL_RADIUS_OF_REPULSION));
+                _log.debug("Created RepulsionPolicy in %d ms", System.currentTimeMillis() - repulseStart);
+            }
+        }
+
+        if (_unseenTiles == null || _turn % UNSEEN_TILE_RECALC_PERIOD == 0) {
+            _unseenTiles = new HashSet<Tile>();
+            // Sparsely sample the board for unseen tiles
+            for (int row = 0; row < Ants.Instance.getRows(); row += UNSEEN_TILE_SAMPLING_RATE) {
+                for (int col = 0; col < Ants.Instance.getCols(); col += UNSEEN_TILE_SAMPLING_RATE) {
+                    Tile t = new Tile(row, col);
+                    if (!Ants.Instance.isVisible(t) && Ants.Instance.getIlk(t) != Ilk.WATER) {
+                        _unseenTiles.add(t);
+                    }
+                }
+            }
+        } else {
+            // remove any tiles that can be seen, run each turn
+            for (Iterator<Tile> locIter = _unseenTiles.iterator(); locIter.hasNext(); ) {
+                Tile next = locIter.next();
+                if (Ants.Instance.isVisible(next)) {
+                    locIter.remove();
+                }
+            }
+        }
+
+    }
+
     private void concludeTurn() {
-        Ants ants = getAnts();
         TargetingPolicy.clearAssignments();
 
         _timeManager.turnDone();
         long start = _timeManager.getTurnStartMs();
         long finish = System.currentTimeMillis();
         _log.info(String.format("[[ # turn %d processing took %d ms, allowed %d.  Overall remaining: %d # ]]",
-                                _turn, finish - start, ants.getTurnTime(), ants.getTimeRemaining()));
+                                _turn, finish - start, Ants.Instance.getTurnTime(), Ants.Instance.getTimeRemaining()));
         int numDestinations = _destinations.size();
         _destinations.clear();
         int numTargetedAnts = _toMove.size();
@@ -139,16 +141,11 @@ public class MyBot extends Bot {
         if (numUntargetedAnts > 0) {
             _log.info(String.format("[[ # Moved %d out of %d ants # ]]", numTargetedAnts, numTargetedAnts + numUntargetedAnts));
         }
-
-        if (_turn % UNSEEN_TILE_RECALC_PERIOD == 0) {
-            // Resample unseen tiles next turn
-            _unseenTiles = null;
-        }
         _turn++;
     }
 
     private void avoidHills() {
-        for (Tile myHill : getAnts().getMyHills()) {
+        for (Tile myHill : Ants.Instance.getMyHills()) {
             _destinations.add(myHill);
         }
     }
@@ -161,7 +158,7 @@ public class MyBot extends Bot {
             if (_timeManager.stepTimeOverrun()) {
                 break;
             }
-            _history.followBreadcrumb(ant, new TargetingPolicy.TargetingHandler() {
+            TargetingHistory.Instance.followBreadcrumb(ant, new TargetingPolicy.TargetingHandler() {
                 @Override
                 public boolean move(Tile ant, Tile nextTile, Tile finalDestination, TargetingPolicy.Type type) {
                     TargetingPolicy policy = TargetingPolicy.get(type);
@@ -178,15 +175,15 @@ public class MyBot extends Bot {
     }
 
     private void seekFood() {
-        targetTiles(getAnts().getFoodTiles(), TargetingPolicy.get(TargetingPolicy.Type.Food));
+        targetTiles(Ants.Instance.getFoodTiles(), TargetingPolicy.get(TargetingPolicy.Type.Food));
     }
 
     private void attackHills() {
-        targetTiles(getAnts().getEnemyHills(), TargetingPolicy.get(TargetingPolicy.Type.EnemyHill));
+        targetTiles(Ants.Instance.getEnemyHills(), TargetingPolicy.get(TargetingPolicy.Type.EnemyHill));
     }
 
     private void attackAnts() {
-        targetTiles(getAnts().getEnemyAnts(), TargetingPolicy.get(TargetingPolicy.Type.EnemyAnt));
+        targetTiles(Ants.Instance.getEnemyAnts(), TargetingPolicy.get(TargetingPolicy.Type.EnemyAnt));
     }
 
     private void exploreUnseenTiles() {
@@ -209,11 +206,10 @@ public class MyBot extends Bot {
                             });
         }
         _log.debug("Unblocked hills, %d elapsed, %d ms remaining in turn",
-                   System.currentTimeMillis() - start, getAnts().getTimeRemaining());
+                   System.currentTimeMillis() - start, Ants.Instance.getTimeRemaining());
     }
 
     private void targetTiles(Collection<Tile> targets, TargetingPolicy policy) {
-        final Ants ants = getAnts();
         long start = System.currentTimeMillis();
         _timeManager.nextStep(TARGETING_ROUTE_SORT_STEP_WEIGHT,
                               policy.toString() + ":Sorting");
@@ -248,8 +244,8 @@ public class MyBot extends Bot {
             Collections.sort(relativeToAnt, new Comparator<Tile>() {
                 @Override
                 public int compare(Tile o1, Tile o2) {
-                    int d1 = ants.getDistance(ant, o1);
-                    int d2 = ants.getDistance(ant, o2);
+                    int d1 = Ants.Instance.getDistance(ant, o1);
+                    int d2 = Ants.Instance.getDistance(ant, o2);
                     if (d1 == d2) {
                         return o1.compareTo(o2);
                     }
@@ -294,15 +290,15 @@ public class MyBot extends Bot {
                     Tile target = relativeToAnt.get(i);
                     long routeStart = System.currentTimeMillis();
                     try {
-                        AStarRoute route = new AStarRoute(ants, ant, target);
+                        AStarRoute route = new AStarRoute(ant, target);
                         routes.add(route);
                         _log.debug("%s route candidate for ant [%s] to tile [%s] (dist=%d): %s",
-                                   policy, ant, target, ants.getDistance(ant, target), route);
+                                   policy, ant, target, Ants.Instance.getDistance(ant, target), route);
                         ++thisAntsRoutes;
                         if (policy.getPerAntRouteLimit() != null &&
                             thisAntsRoutes >= policy.getPerAntRouteLimit().intValue()) {
                             _log.debug("Capping routes for ant [%s] at %d under %s consideration, %d ms remaining...",
-                                       ant, thisAntsRoutes, policy, ants.getTimeRemaining());
+                                       ant, thisAntsRoutes, policy, Ants.Instance.getTimeRemaining());
                             break;
                         }
                     } catch (NoRouteException ex) {
@@ -344,7 +340,9 @@ public class MyBot extends Bot {
             }
             if (policy.canAssign(route.getStart(), route.getEnd()) && move(route)) {
                 policy.assign(route.getStart(), route.getEnd());
-                _history.create(route.getStart(), route.getEnd(), policy.getType(), route);
+                Integer expireAfter =
+                        policy.getType().equals(TargetingPolicy.Type.UnseenTile) ? 10 : null;
+                TargetingHistory.Instance.create(route.getStart(), route.getEnd(), policy.getType(), route, expireAfter, false);
                 --candidateAnts;
                 _log.debug(String.format("Move successful -- route assigned using %s", policy));
                 if (policy.totalAssignmentsLimitReached(targets.size())) {
@@ -355,20 +353,19 @@ public class MyBot extends Bot {
             }
         }
         if (candidateAnts > 0 &&
-            currentUntargetedAntCount < (targets.size() * policy.getPerTargetAssignmentLimit())) {
+            currentUntargetedAntCount <= (targets.size() * policy.getPerTargetAssignmentLimit())) {
             _log.info(String.format("No %s targeting movement for %d ants.",
                                     policy, candidateAnts));
         }
         _log.debug("%s targeting complete, %d elapsed, %d ms remaining in turn...",
-                   policy, System.currentTimeMillis() - start, getAnts().getTimeRemaining());
+                   policy, System.currentTimeMillis() - start, Ants.Instance.getTimeRemaining());
     }
 
     private boolean moveInDirection(Tile antLoc, Aim direction) {
-        Ants ants = getAnts();
         // Track all moves, prevent collisions
-        Tile newLoc = ants.getTile(antLoc, direction);
-        if (ants.getIlk(newLoc).isUnoccupied() && !_destinations.contains(newLoc)) {
-            ants.issueOrder(antLoc, direction);
+        Tile newLoc = Ants.Instance.getTile(antLoc, direction);
+        if (Ants.Instance.getIlk(newLoc).isUnoccupied() && !_destinations.contains(newLoc)) {
+            Ants.Instance.issueOrder(antLoc, direction);
             _destinations.add(newLoc);
             _toMove.add(antLoc);
             _untargetedAnts.remove(antLoc);
@@ -380,8 +377,7 @@ public class MyBot extends Bot {
     }
 
     private boolean moveToLocation(Tile antLoc, Tile destLoc) {
-        Ants ants = getAnts();
-        List<Aim> directions = ants.getDirections(antLoc, destLoc);
+        List<Aim> directions = Ants.Instance.getDirections(antLoc, destLoc);
         for (Aim direction : directions) {
             if (moveInDirection(antLoc, direction)) {
                 return true;

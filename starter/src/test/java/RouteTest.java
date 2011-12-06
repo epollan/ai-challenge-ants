@@ -73,11 +73,11 @@ public class RouteTest extends BaseTest {
     }
 
     private void test(String map, int expectedRouteLength) throws Exception {
-        Ants a = getAnts(map);
+        buildState(map);
         long start = System.currentTimeMillis();
-        for (Tile ant : a.getMyAnts()) {
-            for (Tile food : a.getFoodTiles()) {
-                AStarRoute r = new AStarRoute(a, ant, food);
+        for (Tile ant : Ants.Instance.getMyAnts()) {
+            for (Tile food : Ants.Instance.getFoodTiles()) {
+                AStarRoute r = new AStarRoute(ant, food);
                 System.out.format("Route determined in %d ms\n", (System.currentTimeMillis()-start));
                 printRoute(r);
                 Assert.assertEquals(r.getDistance(), expectedRouteLength);
