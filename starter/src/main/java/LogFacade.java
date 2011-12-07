@@ -71,7 +71,7 @@ public abstract class LogFacade {
         @Override
         protected void implSetProdConfig() {
             try {
-                FileHandler fh = new FileHandler("oldnbusted.log", 10 * 1024 * 1024, 1, true);
+                FileHandler fh = new FileHandler("oldnbusted.log", 10 * 1024 * 1024, 10, true);
                 fh.setFormatter(new LogFormat());
                 _log.addHandler(fh);
             } catch (IOException ex) {

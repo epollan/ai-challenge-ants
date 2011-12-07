@@ -1,6 +1,3 @@
-import java.util.logging.FileHandler;
-import java.util.logging.Logger;
-import java.util.logging.Level;
 import java.io.IOException;
 import java.util.*;
 
@@ -24,10 +21,10 @@ public class MyBot extends Bot {
 
     // Policies, tuning parameters
     static {
-        TargetingPolicy.add(TargetingPolicy.Type.Food, 1, 3, 15);
-        TargetingPolicy.add(TargetingPolicy.Type.EnemyHill, 10, 3, null);
-        TargetingPolicy.add(TargetingPolicy.Type.EnemyAnt, 3, 3, 15);
-        TargetingPolicy.add(TargetingPolicy.Type.UnseenTile, 1, 3, 15);
+        TargetingPolicy.add(TargetingPolicy.Type.Food, 1, 3, 15, null);
+        TargetingPolicy.add(TargetingPolicy.Type.EnemyHill, 10, 3, null, null);
+        TargetingPolicy.add(TargetingPolicy.Type.EnemyAnt, 3, 3, 15, 3);
+        TargetingPolicy.add(TargetingPolicy.Type.UnseenTile, 1, 3, 15, null);
     }
 
     private final static int TIME_ALLOCATION_PAD = 50;
@@ -56,9 +53,22 @@ public class MyBot extends Bot {
     @Override
     public void doTurn() {
         try {
-
+            startTurn();
             avoidHills();
+
+            boolean antsCloseToHills = false;
+            for (RepulsionPolicy hillPolicy : _myHillRepulsions.values()) {
+                if (hillPolicy.getDefenseZone().hasAntsWithinAlarmRadius()) {
+                    antsCloseToHills = true;
+                    break;
+                }
+            }
+            if (antsCloseToHills) {
+                attackAnts();
+            }
+
             followBreadcrumbs();
+
             if (Ants.Instance.getMyAnts().size() < 10) {
                 seekFood();
                 attackHills();
@@ -66,8 +76,13 @@ public class MyBot extends Bot {
                 attackHills();
                 seekFood();
             }
-            attackAnts();
+
+            if (!antsCloseToHills) {
+                attackAnts();
+            }
+
             exploreUnseenTiles();
+
             unblockHills();
 
             concludeTurn();
@@ -92,6 +107,15 @@ public class MyBot extends Bot {
 
         TargetingHistory.Instance.syncState(_turn);
 
+        // Don't defend old hills
+        for (Iterator<Tile> oldHills = _myHillRepulsions.keySet().iterator();
+                oldHills.hasNext();) {
+            Tile oldHill = oldHills.next();
+            if (!Ants.Instance.getMyHills().contains(oldHill)) {
+                _log.debug("Removing repulsion/defense policy for dead hill [%s]", oldHill);
+                oldHills.remove();
+            }
+        }
         for (Tile myHill : Ants.Instance.getMyHills()) {
             if (!_myHillRepulsions.containsKey(myHill)) {
                 long repulseStart = System.currentTimeMillis();
@@ -121,7 +145,6 @@ public class MyBot extends Bot {
                 }
             }
         }
-
     }
 
     private void concludeTurn() {
@@ -132,7 +155,7 @@ public class MyBot extends Bot {
         long finish = System.currentTimeMillis();
         _log.info(String.format("[[ # turn %d processing took %d ms, allowed %d.  Overall remaining: %d # ]]",
                                 _turn, finish - start, Ants.Instance.getTurnTime(), Ants.Instance.getTimeRemaining()));
-        int numDestinations = _destinations.size();
+
         _destinations.clear();
         int numTargetedAnts = _toMove.size();
         _toMove.clear();
@@ -217,7 +240,24 @@ public class MyBot extends Bot {
         // and attack them in phases to calculate optimal routes.  That way, each
         // ant will have a chance to plot *some* optimal routes to some number of targets
         // in order of naive distance ranking
-        Map<Tile, ArrayList<Tile>> targetsRelativeToAntByAnt = new HashMap<Tile, ArrayList<Tile>>();
+        Map<Tile, List<Tile>> targetsRelativeToAntByAnt = sortTargetsByAnt(targets, policy);
+
+        _timeManager.nextStep(TARGETING_ROUTE_CALC_STEP_WEIGHT,
+                              policy.toString() + ":Routing");
+
+        // Track routes computed per-ant, to enable a bail on route calc's for a given ant when we hit
+        // a policy-defined limit
+        routeToTargets(targets, policy, targetsRelativeToAntByAnt);
+
+        _timeManager.nextStep(TARGETING_ROUTE_MOVE_STEP_WEIGHT,
+                              policy.toString() + ":Movement");
+        moveToTargets(targets, policy);
+        _log.debug("%s targeting complete, %d elapsed, %d ms remaining in turn...",
+                   policy, System.currentTimeMillis() - start, Ants.Instance.getTimeRemaining());
+    }
+
+    private Map<Tile, List<Tile>> sortTargetsByAnt(final Collection<Tile> targets,
+                                                   final TargetingPolicy policy) {
         ArrayList<Tile> targetableTargets = new ArrayList<Tile>(targets);
         for (int i = targetableTargets.size() - 1; i >= 0; i--) {
             if (!policy.canAssign(null, targetableTargets.get(i))) {
@@ -239,6 +279,7 @@ public class MyBot extends Bot {
         } else {
             toTarget.addAll(_untargetedAnts);
         }
+        Map<Tile, List<Tile>> targetsRelativeToAntByAnt = new HashMap<Tile, List<Tile>>();
         for (final Tile ant : toTarget) {
             ArrayList<Tile> relativeToAnt = new ArrayList<Tile>(targetableTargets);
             Collections.sort(relativeToAnt, new Comparator<Tile>() {
@@ -257,20 +298,22 @@ public class MyBot extends Bot {
                 break;
             }
         }
+        return targetsRelativeToAntByAnt;
+    }
 
-        _timeManager.nextStep(TARGETING_ROUTE_CALC_STEP_WEIGHT,
-                              policy.toString() + ":Routing");
+    private final List<AStarRoute> _routesToTargets = new ArrayList<AStarRoute>(100);
 
-        // Track routes computed per-ant, to enable a bail on route calc's for a given ant when we hit
-        // a policy-defined limit
-        Map<Tile, Integer> routeCountByAnt = new HashMap<Tile, Integer>();
-        List<AStarRoute> routes = new LinkedList<AStarRoute>();
+    private void routeToTargets(final Collection<Tile> targets,
+                                final TargetingPolicy policy,
+                                final Map<Tile, List<Tile>> targetsRelativeToAntByAnt) {
 
+        final Map<Tile, Integer> routeCountByAnt = new HashMap<Tile, Integer>();
+        _routesToTargets.clear();
         // Chunks of per-ant-sorted targets we'll walk through to compute A* routes
         final int targetStepSize = 3;
         for (int targetStart = 0; targetStart < targets.size(); targetStart += targetStepSize) {
             boolean timedOut = false;
-            for (final Tile ant : toTarget) {
+            for (final Tile ant : targetsRelativeToAntByAnt.keySet()) {
                 int thisAntsRoutes = 0;
                 if (routeCountByAnt.containsKey(ant)) {
                     thisAntsRoutes = routeCountByAnt.get(ant).intValue();
@@ -280,18 +323,14 @@ public class MyBot extends Bot {
                     }
                 }
                 // Look at routes in order of targets' distance from the current ant
-                ArrayList<Tile> relativeToAnt = targetsRelativeToAntByAnt.get(ant);
-                if (relativeToAnt == null) {
-                    _log.info(String.format("Timed out naively sorting targets for ant [%s], no routes...", ant));
-                    break;
-                }
+                final List<Tile> relativeToAnt = targetsRelativeToAntByAnt.get(ant);
                 // Start traversing the list based on the current step
                 for (int i = targetStart; i < targetStart + targetStepSize && i < relativeToAnt.size(); i++) {
                     Tile target = relativeToAnt.get(i);
                     long routeStart = System.currentTimeMillis();
                     try {
-                        AStarRoute route = new AStarRoute(ant, target);
-                        routes.add(route);
+                        final AStarRoute route = new AStarRoute(ant, target);
+                        _routesToTargets.add(route);
                         _log.debug("%s route candidate for ant [%s] to tile [%s] (dist=%d): %s",
                                    policy, ant, target, Ants.Instance.getDistance(ant, target), route);
                         ++thisAntsRoutes;
@@ -319,46 +358,120 @@ public class MyBot extends Bot {
                 break;
             }
         }
-        int candidateAnts = _untargetedAnts.size();
         _log.debug("Weighing %,d routes using %s, given %d candidate ants and %,d targets",
-                   routes.size(), policy, candidateAnts, targets.size());
-        _timeManager.nextStep(TARGETING_ROUTE_MOVE_STEP_WEIGHT,
-                              policy.toString() + ":Movement");
-        if (routes.isEmpty()) {
+                   _routesToTargets.size(), policy, _untargetedAnts.size(), targets.size());
+    }
+
+    private void moveToTargets(final Collection<Tile> targets,
+                               final TargetingPolicy policy) {
+        if (_routesToTargets.isEmpty()) {
             return;
         }
+        final int startingUntargetedAntCount = _untargetedAnts.size();
+        X.ReferenceInt candidateAnts = new X.ReferenceInt(startingUntargetedAntCount);
+        Collections.sort(_routesToTargets);
+        boolean timedOut = false;
+        final int numTargets = targets.size();
 
-        int currentUntargetedAntCount = _untargetedAnts.size();
-        Collections.sort(routes);
-        for (AStarRoute route : routes) {
-            if (_toMove.contains(route.getStart())) {
-                // More optimial route already assigned movement to this route's ant
-                continue;
+        if (policy.getPerTargetAssignmentFloor() != null) {
+            // Map to facilitate collation per target
+            Map<Tile, List<AStarRoute>> targetToRoutes = new HashMap<Tile, List<AStarRoute>>();
+            // Ordered list of collated routes (ordered list of pointers to lists in map),
+            // where each sub-list represent different routes to the same target
+            List<List<AStarRoute>> collatedRoutes = new ArrayList<List<AStarRoute>>(targets.size());
+            for (AStarRoute r : _routesToTargets) {
+                List<AStarRoute> targetRoutes = targetToRoutes.get(r.getEnd());
+                if (targetRoutes == null) {
+                    targetRoutes = new LinkedList<AStarRoute>();
+                    targetToRoutes.put(r.getEnd(), targetRoutes);
+                    collatedRoutes.add(targetRoutes);
+                }
+                targetRoutes.add(r);
             }
-            if (_timeManager.stepTimeOverrun()) {
-                break;
-            }
-            if (policy.canAssign(route.getStart(), route.getEnd()) && move(route)) {
-                policy.assign(route.getStart(), route.getEnd());
-                Integer expireAfter =
-                        policy.getType().equals(TargetingPolicy.Type.UnseenTile) ? 10 : null;
-                TargetingHistory.Instance.create(route.getStart(), route.getEnd(), policy.getType(), route, expireAfter, false);
-                --candidateAnts;
-                _log.debug(String.format("Move successful -- route assigned using %s", policy));
-                if (policy.totalAssignmentsLimitReached(targets.size())) {
-                    _log.debug("Assigned the maximum number of %s routes (%s)",
-                               policy, policy.getTotalAssignmentsLimit(targets.size()));
+            final X.Function<AStarRoute> floorSatisfied =
+                    new X.Function<AStarRoute>() {
+                        @Override
+                        public boolean eval(AStarRoute... args) {
+                            if (!policy.needsMoreAssignments(args[0].getEnd())) {
+                                _log.info("Met targeting floor for [%s]", args[0].getEnd());
+                                return true;
+                            }
+                            return false;
+                        }
+                    };
+            // First pass to try to satisfy floors
+            for (List<AStarRoute> forTarget : collatedRoutes) {
+                for (AStarRoute r : forTarget) {
+                    if (_toMove.contains(r.getStart())) {
+                        continue;
+                    }
+                    if (_timeManager.stepTimeOverrun()) {
+                        timedOut = true;
+                        break;
+                    }
+                    if (moveToTarget(r, policy, numTargets, floorSatisfied, candidateAnts)) {
+                        // Move to routes for the next target -- we've me the floor for this target
+                        break;
+                    }
+                }
+                if (timedOut || _timeManager.stepTimeOverrun()) {
+                    timedOut = true;
                     break;
                 }
             }
         }
-        if (candidateAnts > 0 &&
-            currentUntargetedAntCount <= (targets.size() * policy.getPerTargetAssignmentLimit())) {
-            _log.info(String.format("No %s targeting movement for %d ants.",
-                                    policy, candidateAnts));
+        for (AStarRoute route : _routesToTargets) {
+            if (_toMove.contains(route.getStart())) {
+                // More optimial route already assigned movement to this route's ant
+                continue;
+            }
+            if (timedOut || _timeManager.stepTimeOverrun()) {
+                timedOut = true;
+                break;
+            }
+            if (moveToTarget(route, policy, numTargets, null, candidateAnts)) {
+                break;
+            }
         }
-        _log.debug("%s targeting complete, %d elapsed, %d ms remaining in turn...",
-                   policy, System.currentTimeMillis() - start, Ants.Instance.getTimeRemaining());
+        if (candidateAnts.Value > 0 &&
+            startingUntargetedAntCount <= (targets.size() * policy.getPerTargetAssignmentLimit())) {
+            _log.info(String.format("No %s targeting movement for %d ants.",
+                                    policy, candidateAnts.Value));
+        }
+    }
+
+    // Returns true if we can stop trying to move to the next-best route
+    private boolean moveToTarget(final AStarRoute route,
+                                 final TargetingPolicy policy,
+                                 final int numTargets,
+                                 final X.Function<AStarRoute> finishedCondition,
+                                 final X.ReferenceInt candidateAnts) {
+        if (policy.canAssign(route.getStart(), route.getEnd()) && move(route)) {
+            policy.assign(route.getStart(), route.getEnd());
+            Integer expireAfter = null;
+            switch (policy.getType()) {
+                case UnseenTile:
+                    expireAfter = 10;
+                    break;
+                case EnemyAnt:
+                    expireAfter = Math.min(10, route.getDistance());
+                    break;
+                default:
+                    break;
+            }
+            TargetingHistory.Instance.create(route.getStart(), route.getEnd(), policy.getType(),
+                                             route, expireAfter, false);
+            --candidateAnts.Value;
+            _log.debug(String.format("Move successful -- route assigned using %s", policy));
+            if (policy.totalAssignmentsLimitReached(numTargets)) {
+                _log.debug("Assigned the maximum number of %s routes (%s)",
+                           policy, policy.getTotalAssignmentsLimit(numTargets));
+                return true;
+            } else if (finishedCondition != null && finishedCondition.eval(route)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean moveInDirection(Tile antLoc, Aim direction) {

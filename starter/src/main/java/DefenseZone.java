@@ -1,5 +1,4 @@
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -36,20 +35,20 @@ public class DefenseZone {
     }
 
     private final int _alarmRadius;
-    private final Tile _hill;
     private final List<Tile> _strongpoints;
+    private final Tile _hill;
 
     public DefenseZone(Tile hill, int alarmRadius) {
         _hill = hill;
         _alarmRadius = alarmRadius;
         Map<Tile, Hotspot> alarmRadiusTraffic = new HashMap<Tile, Hotspot>();
-        Circumference c = new Circumference(_hill, _alarmRadius);
+        Circumference c = new Circumference(hill, _alarmRadius);
         for (Tile t : c) {
             alarmRadiusTraffic.put(t, new Hotspot(t));
         }
-        for (Tile t : new Circumference(_hill, _alarmRadius * 2)) {
+        for (Tile t : new Circumference(hill, _alarmRadius * 2)) {
             try {
-                AStarRoute route = new AStarRoute(t, _hill);
+                AStarRoute route = new AStarRoute(t, hill);
                 boolean passedAlarmRadius = false;
                 for (Tile routeTile : route.routeTiles()) {
                     if (alarmRadiusTraffic.containsKey(routeTile)) {
@@ -85,5 +84,14 @@ public class DefenseZone {
 
     public List<Tile> getStrongpoints() {
         return _strongpoints;
+    }
+
+    public boolean hasAntsWithinAlarmRadius() {
+        for (Tile enemy : Ants.Instance.getEnemyAnts()) {
+            if (Ants.Instance.getDistance(_hill, enemy) <= _alarmRadius) {
+                return true;
+            }
+        }
+        return false;
     }
 }

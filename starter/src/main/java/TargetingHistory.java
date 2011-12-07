@@ -29,7 +29,10 @@ public class TargetingHistory {
             boolean present = true;
             switch (entry.getValue().Type) {
                 case EnemyAnt:
-                    present = Ants.Instance.getEnemyAnts().contains(entry.getValue().Destination);
+                    // Let the expiration of the breadcrumb established when creating the
+                    // route persist -- enemy ants move around a bunch and end up
+                    // clobbering targeting histories unnecessarily
+//                    present = Ants.Instance.getEnemyAnts().contains(entry.getValue().Destination);
                     break;
                 case EnemyHill:
                     present = Ants.Instance.getEnemyHills().contains(entry.getValue().Destination);
@@ -93,11 +96,13 @@ public class TargetingHistory {
             Tile influencer = ((UnroutedBreadcrumb) crumb).RouteInfluencer;
             Breadcrumb influence = _map.get(influencer);
             if (influence instanceof UnroutedBreadcrumb) {
-                _log.info(String.format("Unexpected unrouted influencer created for destination=[%s] on turn %d.  Our destination=[%s]",
-                                        influence.Destination, influence.TurnCreated, crumb.Destination));
+                _log.info(String.format(
+                        "Unexpected unrouted %s influencer created for destination=[%s] on turn %d.  Our destination=[%s]",
+                        influence.Type, influence.Destination, influence.TurnCreated, crumb.Destination));
             } else if (influence == null) {
-                _log.info(String.format("Removing unrouted breadcrumb at [%s] because its influencer at [%s] is missing",
-                                        ant, influencer));
+                _log.info(String.format(
+                        "Removing unrouted %s breadcrumb at [%s] because its influencer at [%s] is missing",
+                        crumb.Type, ant, influencer));
                 _map.remove(ant);
             } else if (!ant.equals(influence.Destination)) {
                 // We need to calculate our own route from this tile
