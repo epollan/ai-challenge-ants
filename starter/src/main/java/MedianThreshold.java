@@ -1,10 +1,7 @@
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
 /**
- * TODO
  * Author: evan.pollan
  */
 public final class MedianThreshold {
@@ -16,7 +13,7 @@ public final class MedianThreshold {
         int getMetric();
     }
 
-    public static <T extends Measurable> List<T> belowMedianThreshold(List<T> candidates, float threshold) {
+    public static <T extends Measurable<? super T>> List<T> belowMedianThreshold(List<T> candidates, float threshold) {
         Collections.sort(candidates);
         int medianPos = (int) Math.floor(candidates.size() / 2);
         int endPos = 0;
@@ -35,7 +32,7 @@ public final class MedianThreshold {
         return candidates.subList(0, endPos);
     }
 
-    public static <T extends Measurable> List<T> aboveMedianThreshold(List<T> candidates, float threshold) {
+    public static <T extends Measurable<? super T>> List<T> aboveMedianThreshold(List<T> candidates, float threshold) {
         Collections.sort(candidates);
         int medianPos = (int) Math.floor(candidates.size() / 2);
         int startPos = 0;

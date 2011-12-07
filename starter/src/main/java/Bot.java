@@ -1,5 +1,3 @@
-import junit.runner.LoadingTestCollector;
-
 /**
  * Provides basic game state handling.
  */
