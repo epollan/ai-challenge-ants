@@ -17,7 +17,8 @@ public class TargetingPolicy {
         EnemyHill,
         EnemyAnt,
         UnseenTile,
-        Unmanaged
+        Unmanaged,
+        DefensiveStation
     }
 
     private static Map<Type, TargetingPolicy> _policies = new HashMap<Type, TargetingPolicy>();

@@ -23,16 +23,16 @@ public class TargetingHistory {
         _turn = turn;
         for (Map.Entry<Tile, Breadcrumb> entry : new ArrayList<Map.Entry<Tile, Breadcrumb>>(_map.entrySet())) {
             if (entry.getValue().isExpired(_turn)) {
+                LogFacade.get(TargetingHistory.class).debug("%s breadcrumb at [%s] expired",
+                                                            entry.getValue().Type, entry.getKey());
                 _map.remove(entry.getKey());
                 continue;
             }
             boolean present = true;
             switch (entry.getValue().Type) {
                 case EnemyAnt:
-                    // Let the expiration of the breadcrumb established when creating the
                     // route persist -- enemy ants move around a bunch and end up
                     // clobbering targeting histories unnecessarily
-//                    present = Ants.Instance.getEnemyAnts().contains(entry.getValue().Destination);
                     break;
                 case EnemyHill:
                     present = Ants.Instance.getEnemyHills().contains(entry.getValue().Destination);
@@ -51,12 +51,24 @@ public class TargetingHistory {
         }
     }
 
+    private void clearTrail(Tile t, RoutedBreadcrumb crumb) {
+        _map.remove(t);
+        t = crumb.Next;
+        if (_map.containsKey(t)) {
+            clearTrail(t, crumb);
+        }
+    }
+
     public void create(Tile current,
                        Tile destination,
                        TargetingPolicy.Type type,
                        AStarRoute route,
                        Integer expiresAfter,
                        boolean skipStart) {
+        if (expiresAfter != null && 2 > expiresAfter) {
+            // If we expire after one turn, don't bother
+            return;
+        }
         final Tile influencer = current;
         for (Tile nextHop : route.routeTiles()) {
             if (skipStart) {
@@ -125,8 +137,19 @@ public class TargetingHistory {
                 _log.debug("Leveraging previously computed route for %s at [%s]",
                            routed.Type, routed.Destination);
             } else {
-                _log.debug("Cannot follow routed breadcrumb from [%s] to [%s], removing...", ant, routed.Next);
-                _map.remove(ant);
+                _log.debug("Cannot follow routed breadcrumb from [%s] to [%s], attempting re-route...", ant, routed.Next);
+                try {
+                    AStarRoute updated = new AStarRoute(ant, routed.Destination);
+                    if (handler.move(ant, updated.nextTile(), updated.getEnd(), routed.Type)) {
+                        _log.debug("Re-routed [%s] to %s breadcrumb destination at [%s]",
+                                   ant, routed.Type, updated.getEnd());
+                        clearTrail(ant, routed);
+                        create(ant, updated.getEnd(), routed.Type, updated, routed.ExpiresAfter, true);
+                    }
+                } catch (NoRouteException ex) {
+                    _log.debug("Re-route failed, removing breadcrumb at [%s]", ant);
+                    _map.remove(ant);
+                }
             }
         }
     }
@@ -159,6 +182,7 @@ public class TargetingHistory {
         public TargetingPolicy.Type Type;
         public int TurnCreated;
         public Integer ExpiresAfter = null;
+
         public boolean isExpired(int turn) {
             return (ExpiresAfter != null) ? (TurnCreated + ExpiresAfter.intValue()) < turn : false;
         }

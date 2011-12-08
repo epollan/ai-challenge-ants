@@ -25,6 +25,7 @@ public class MyBot extends Bot {
         TargetingPolicy.add(TargetingPolicy.Type.EnemyHill, 10, 3, null, null);
         TargetingPolicy.add(TargetingPolicy.Type.EnemyAnt, 3, 3, 15, 3);
         TargetingPolicy.add(TargetingPolicy.Type.UnseenTile, 1, 3, 15, null);
+        TargetingPolicy.add(TargetingPolicy.Type.DefensiveStation, 1, 2, 10, null);
     }
 
     private final static int TIME_ALLOCATION_PAD = 50;
@@ -40,6 +41,7 @@ public class MyBot extends Bot {
     private final Set<Tile> _untargetedAnts = new HashSet<Tile>();
     private final Set<Tile> _destinations = new HashSet<Tile>();
     private final Set<Tile> _toMove = new HashSet<Tile>();
+    private final List<AStarRoute> _routesToTargets = new ArrayList<AStarRoute>(100);
     private Set<Tile> _unseenTiles = null;
     private final Map<Tile, RepulsionPolicy> _myHillRepulsions = new HashMap<Tile, RepulsionPolicy>();
     private int _turn = 0;
@@ -60,7 +62,6 @@ public class MyBot extends Bot {
             for (RepulsionPolicy hillPolicy : _myHillRepulsions.values()) {
                 if (hillPolicy.getDefenseZone().hasAntsWithinAlarmRadius()) {
                     antsCloseToHills = true;
-                    break;
                 }
             }
             if (antsCloseToHills) {
@@ -80,6 +81,8 @@ public class MyBot extends Bot {
             if (!antsCloseToHills) {
                 attackAnts();
             }
+
+            defendMyHills();
 
             exploreUnseenTiles();
 
@@ -117,11 +120,15 @@ public class MyBot extends Bot {
             }
         }
         for (Tile myHill : Ants.Instance.getMyHills()) {
-            if (!_myHillRepulsions.containsKey(myHill)) {
+            RepulsionPolicy hillRepulsion = _myHillRepulsions.get(myHill);
+            if (hillRepulsion == null) {
                 long repulseStart = System.currentTimeMillis();
                 // Aim to keep ants at least 6 moves away from my hills
                 _myHillRepulsions.put(myHill, new RepulsionPolicy(myHill, MY_HILL_RADIUS_OF_REPULSION));
                 _log.debug("Created RepulsionPolicy in %d ms", System.currentTimeMillis() - repulseStart);
+            }
+            else {
+                hillRepulsion.getDefenseZone().leaveInnerDefensesStaffed(_untargetedAnts);
             }
         }
 
@@ -207,6 +214,18 @@ public class MyBot extends Bot {
 
     private void attackAnts() {
         targetTiles(Ants.Instance.getEnemyAnts(), TargetingPolicy.get(TargetingPolicy.Type.EnemyAnt));
+    }
+
+    private void defendMyHills() {
+        Set<Tile> unoccupiedStations = new HashSet<Tile>();
+        for (RepulsionPolicy repulsion : _myHillRepulsions.values()) {
+            for (Tile station : repulsion.getDefenseZone().getInnerDefenses()) {
+                if (!Ants.Instance.getMyAnts().contains(station)) {
+                    unoccupiedStations.add(station);
+                }
+            }
+        }
+        targetTiles(unoccupiedStations, TargetingPolicy.get(TargetingPolicy.Type.DefensiveStation));
     }
 
     private void exploreUnseenTiles() {
@@ -300,8 +319,6 @@ public class MyBot extends Bot {
         }
         return targetsRelativeToAntByAnt;
     }
-
-    private final List<AStarRoute> _routesToTargets = new ArrayList<AStarRoute>(100);
 
     private void routeToTargets(final Collection<Tile> targets,
                                 final TargetingPolicy policy,
@@ -450,13 +467,11 @@ public class MyBot extends Bot {
             policy.assign(route.getStart(), route.getEnd());
             Integer expireAfter = null;
             switch (policy.getType()) {
-                case UnseenTile:
-                    expireAfter = 10;
-                    break;
                 case EnemyAnt:
-                    expireAfter = Math.min(10, route.getDistance());
+                    expireAfter = (int) Math.floor(route.getDistance() / 4.0d);
                     break;
                 default:
+                    expireAfter = (int) Math.floor(route.getDistance() / 2.0d);
                     break;
             }
             TargetingHistory.Instance.create(route.getStart(), route.getEnd(), policy.getType(),
