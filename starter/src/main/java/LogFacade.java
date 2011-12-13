@@ -79,7 +79,7 @@ public abstract class LogFacade {
             } catch (IOException ex) {
                 throw new RuntimeException(ex);
             }
-            _log.setLevel(Level.FINE);
+            _log.setLevel(Level.INFO);
         }
 
         @Override

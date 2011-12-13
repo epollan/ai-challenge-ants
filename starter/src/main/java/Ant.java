@@ -1,5 +1,3 @@
-import com.sun.xml.internal.xsom.XSWildcard;
-
 /**
  * Author: evan.pollan
  */
