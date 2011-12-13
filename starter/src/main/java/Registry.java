@@ -210,6 +210,10 @@ public class Registry {
         return map[tile.getRow()][tile.getCol()];
     }
 
+    public final Ilk getIlk(int row, int col) {
+        return map[row][col];
+    }
+
     /**
      * Sets ilk at the specified location.
      *

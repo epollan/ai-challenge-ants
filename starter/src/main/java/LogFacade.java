@@ -29,6 +29,8 @@ public abstract class LogFacade {
 
     protected abstract void debug(String pattern, Object... args);
 
+    protected abstract boolean isDebugEnabled();
+
     private static final Map<Class, LogFacade> _loggers = new HashMap<Class, LogFacade>();
 
     public static LogFacade get(Class c) {
@@ -81,24 +83,29 @@ public abstract class LogFacade {
         }
 
         @Override
-        protected void error(String pattern, Throwable error, Object... args) {
+        protected final void error(String pattern, Throwable error, Object... args) {
             if (_log.isLoggable(Level.SEVERE)) {
                 _log.log(Level.SEVERE, String.format(pattern, args), error);
             }
         }
 
         @Override
-        protected void info(String pattern, Object... args) {
+        protected final void info(String pattern, Object... args) {
             if (_log.isLoggable(Level.INFO)) {
                 _log.logp(Level.INFO, _sourceClass, "", String.format(pattern, args));
             }
         }
 
         @Override
-        protected void debug(String pattern, Object... args) {
+        protected final void debug(String pattern, Object... args) {
             if (_log.isLoggable(Level.FINE)) {
                 _log.logp(Level.FINE, _sourceClass, "", String.format(pattern, args));
             }
+        }
+
+        @Override
+        protected final boolean isDebugEnabled() {
+            return _log.isLoggable(Level.FINE);
         }
 
         private static class LogFormat extends Formatter {

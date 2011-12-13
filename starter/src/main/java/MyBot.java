@@ -39,7 +39,9 @@ public class MyBot extends Bot {
     private final static float TARGETING_ROUTE_CALC_STEP_WEIGHT = 1.8f;
     private final static float TARGETING_ROUTE_MOVE_STEP_WEIGHT = 1.0f;
     private final static float HILL_REPULSION_STEP_WEIGHT = 1.0f;
-    private final static float COMBAT_ZONE_COMBAT = 3.0f;
+    private final static float COMBAT_ZONE_COMBAT = 5.0f;
+    private final static float INFLUENCE_MAP_SETUP = 1.0f;
+    private final static float INFLUENCE_MAP_MOVEMENT = 1.0f;
 
     private List<CombatZone> _combatZones = new ArrayList<CombatZone>();
     private final Set<Tile> _untargetedAnts = new HashSet<Tile>();
@@ -51,6 +53,7 @@ public class MyBot extends Bot {
     private int _turn = 0;
     private static LogFacade _log;
     private TimeManager _timeManager = null;
+    private TargetInfluenceMap _influence;
 
     /**
      * For every ant check every direction in fixed order (N, E, S, W) and move it if the tile is
@@ -69,10 +72,9 @@ public class MyBot extends Bot {
                 }
             }
             /*
-            if (antsCloseToHills) {
-                attackAnts();
-            }
-            */
+//            if (antsCloseToHills) {
+//                attackAnts();
+//            }
 
             followBreadcrumbs();
 
@@ -84,18 +86,33 @@ public class MyBot extends Bot {
                 seekFood();
             }
 
-            /*
-            if (!antsCloseToHills) {
-                attackAnts();
-            }
-            */
-            engageInCombat();
+//            if (!antsCloseToHills) {
+//                attackAnts();
+//            }
 
             defendMyHills();
 
             exploreUnseenTiles();
 
             unblockHills();
+            */
+            engageInCombat();
+
+            _timeManager.nextStep(INFLUENCE_MAP_MOVEMENT, "Influence Map Movement");
+            long start = System.currentTimeMillis();
+            for (Tile ant : new ArrayList<Tile>(_untargetedAnts)) {
+                for (Iterator<Tile> moves = _influence.getTargets(ant); moves.hasNext(); ) {
+                    if (moveToLocation(ant, moves.next())) {
+                        break;
+                    }
+                }
+                if (_timeManager.stepTimeOverrun()) {
+                    break;
+                }
+            }
+            _log.debug("Moved %d ants in %d ms",
+                       Registry.Instance.getMyAnts().size() - _untargetedAnts.size(),
+                       System.currentTimeMillis() - start);
 
             concludeTurn();
         } catch (Throwable t) {
@@ -117,6 +134,7 @@ public class MyBot extends Bot {
         }
         _timeManager.turnStarted();
 
+        /*
         TargetingHistory.Instance.syncState(_turn);
 
         // Don't defend old hills
@@ -139,6 +157,7 @@ public class MyBot extends Bot {
                 hillRepulsion.getDefenseZone().leaveInnerDefensesStaffed(_untargetedAnts);
             }
         }
+        */
 
         if (_unseenTiles == null || _turn % UNSEEN_TILE_RECALC_PERIOD == 0) {
             _unseenTiles = new HashSet<Tile>();
@@ -160,6 +179,14 @@ public class MyBot extends Bot {
                 }
             }
         }
+
+        if (_influence == null) {
+            _influence = new TargetInfluenceMap();
+        }
+        _timeManager.nextStep(INFLUENCE_MAP_SETUP, "Influence Map Setup");
+        long start = System.currentTimeMillis();
+        _influence.reset(_unseenTiles, _timeManager);
+        _log.debug("Set up influence map in %d ms", System.currentTimeMillis() - start);
 
         createCombatZones();
     }
