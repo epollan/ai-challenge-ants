@@ -103,7 +103,7 @@ public class AStarRoute extends Route {
 
     // Best case distance heuristic, dX + dY
     private double heuristic(Tile start, Tile goal) {
-        return Ants.Instance.getDistance(start, goal);
+        return Registry.Instance.getDistance(start, goal);
     }
 
     // Backtrack from the currentNode using the cameFrom map to construct
@@ -124,11 +124,11 @@ public class AStarRoute extends Route {
     private Iterable<Tile> neighbors(Tile t) {
         _neighborsBuffer.clear();
         for (Aim aim : Aim.values()) {
-            Tile neighbor = Ants.Instance.getTile(t, aim);
+            Tile neighbor = Registry.Instance.getTile(t, aim);
             // We can travel to a neighboring tile if it's unoccupied, or if it's our
             // end goal
             //if (_ants.getIlk(neighbor).isUnoccupied() || neighbor.equals(_end)) {
-            if (Ants.Instance.getIlk(neighbor).isPassable() || neighbor.equals(_end)) {
+            if (Registry.Instance.getIlk(neighbor).isPassable() || neighbor.equals(_end)) {
                 _neighborsBuffer.add(neighbor);
             }
         }

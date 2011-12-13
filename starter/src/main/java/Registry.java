@@ -1,13 +1,16 @@
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
  * Holds all game data and current game state.
  */
-public class Ants {
+public class Registry {
     /**
      * Maximum map size.
      */
@@ -31,15 +34,13 @@ public class Ants {
 
     private final boolean visible[][];
 
-    private final Set<Tile> visionOffsets;
-
     private long turnStartTime;
 
     private final Ilk map[][];
 
     private final Set<Tile> myAnts = new HashSet<Tile>();
 
-    private final Set<Tile> enemyAnts = new HashSet<Tile>();
+    private final Map<Tile, EnemyAnt> enemyAnts = new HashMap<Tile, EnemyAnt>();
 
     private final Set<Tile> myHills = new HashSet<Tile>();
 
@@ -49,16 +50,18 @@ public class Ants {
 
     private final Set<Order> orders = new HashSet<Order>();
 
-    public static Ants Instance;
+    private final Map<Integer, Collection<Tile>> _offsets = new HashMap<Integer, Collection<Tile>>();
+
+    public static Registry Instance;
 
     public static void initialize(int loadTime, int turnTime, int rows, int cols, int turns, int viewRadius2,
                                   int attackRadius2, int spawnRadius2) {
-        Instance = new Ants(loadTime, turnTime, rows, cols, turns, viewRadius2, attackRadius2, spawnRadius2);
+        Instance = new Registry(loadTime, turnTime, rows, cols, turns, viewRadius2, attackRadius2, spawnRadius2);
     }
 
 
     /**
-     * Creates new {@link Ants} object.
+     * Creates new {@link Registry} object.
      *
      * @param loadTime      timeout for initializing and setting up the bot on turn 0
      * @param turnTime      timeout for a single game turn, starting with turn 1
@@ -69,8 +72,8 @@ public class Ants {
      * @param attackRadius2 squared attack radius of each ant
      * @param spawnRadius2  squared spawn radius of each ant
      */
-    private Ants(int loadTime, int turnTime, int rows, int cols, int turns, int viewRadius2,
-                 int attackRadius2, int spawnRadius2) {
+    private Registry(int loadTime, int turnTime, int rows, int cols, int turns, int viewRadius2,
+                     int attackRadius2, int spawnRadius2) {
         this.loadTime = loadTime;
         this.turnTime = turnTime;
         this.rows = rows;
@@ -87,17 +90,24 @@ public class Ants {
         for (boolean[] row : visible) {
             Arrays.fill(row, false);
         }
-        // calc vision offsets
-        visionOffsets = new HashSet<Tile>();
-        int mx = (int) Math.sqrt(viewRadius2);
-        for (int row = -mx; row <= mx; ++row) {
-            for (int col = -mx; col <= mx; ++col) {
-                int d = row * row + col * col;
-                if (d <= viewRadius2) {
-                    visionOffsets.add(new Tile(row, col));
+    }
+
+    public Collection<Tile> getOffsets(Integer distance2) {
+        Collection<Tile> offsets = _offsets.get(distance2);
+        if (offsets == null) {
+            offsets = new HashSet<Tile>();
+            int mx = (int) Math.sqrt(distance2);
+            for (int row = -mx; row <= mx; ++row) {
+                for (int col = -mx; col <= mx; ++col) {
+                    int d = row * row + col * col;
+                    if (d <= distance2) {
+                        offsets.add(new Tile(row, col));
+                    }
                 }
             }
+            _offsets.put(distance2, offsets);
         }
+        return offsets;
     }
 
     /**
@@ -275,7 +285,15 @@ public class Ants {
      * @return a set containing all enemy ants locations
      */
     public Set<Tile> getEnemyAnts() {
-        return enemyAnts;
+        return enemyAnts.keySet();
+    }
+
+    public EnemyAnt getTeamedEnemyAnt(Tile t) {
+        return enemyAnts.get(t);
+    }
+
+    public Collection<EnemyAnt> getTeamedEnemyAnts() {
+        return enemyAnts.values();
     }
 
     /**
@@ -340,6 +358,15 @@ public class Ants {
         return rowDelta + colDelta;
     }
 
+    public int getDistance2(Tile t1, Tile t2) {
+        int rowDelta = Math.abs(t1.getRow() - t2.getRow());
+        int colDelta = Math.abs(t1.getCol() - t2.getCol());
+        // Map is a torus -- no edges
+        rowDelta = Math.min(rowDelta, rows - rowDelta);
+        colDelta = Math.min(colDelta, cols - colDelta);
+        return rowDelta * rowDelta + colDelta * colDelta;
+    }
+
     /**
      * Returns one or two orthogonal directions from one location to the another.
      *
@@ -392,7 +419,7 @@ public class Ants {
      * Clears game state information about enemy ants locations.
      */
     public void clearEnemyAnts() {
-        for (Tile enemyAnt : enemyAnts) {
+        for (Tile enemyAnt : enemyAnts.keySet()) {
             map[enemyAnt.getRow()][enemyAnt.getCol()] = Ilk.LAND;
         }
         enemyAnts.clear();
@@ -452,7 +479,7 @@ public class Ants {
      */
     public void setVision() {
         for (Tile antLoc : myAnts) {
-            for (Tile locOffset : visionOffsets) {
+            for (Tile locOffset : getOffsets(getViewRadius2())) {
                 Tile newLoc = getTile(antLoc, locOffset);
                 visible[newLoc.getRow()][newLoc.getCol()] = true;
             }
@@ -465,7 +492,11 @@ public class Ants {
      * @param ilk  ilk to be updated
      * @param tile location on the game map to be updated
      */
-    public void update(Ilk ilk, Tile tile) {
+    public final void update(Ilk ilk, Tile tile) {
+        update(ilk, tile, null);
+    }
+
+    public void update(Ilk ilk, Tile tile, Integer team) {
         map[tile.getRow()][tile.getCol()] = ilk;
         switch (ilk) {
             case FOOD:
@@ -475,7 +506,7 @@ public class Ants {
                 myAnts.add(tile);
                 break;
             case ENEMY_ANT:
-                enemyAnts.add(tile);
+                enemyAnts.put(tile, new EnemyAnt(tile, team));
                 break;
         }
     }
@@ -506,7 +537,7 @@ public class Ants {
         Order order = new Order(myAnt, direction);
         orders.add(order);
         System.out.println(order);
-        update(Ilk.LAND, myAnt);
-        update(Ilk.MY_ANT, getTile(myAnt, direction));
+        update(Ilk.LAND, myAnt, null);
+        update(Ilk.MY_ANT, getTile(myAnt, direction), null);
     }
 }

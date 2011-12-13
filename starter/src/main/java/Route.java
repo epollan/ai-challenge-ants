@@ -12,7 +12,7 @@ public class Route implements MedianThreshold.Measurable<Route> {
         _start = start;
         _end = end;
         _distance = distance;
-        _hash = _start.hashCode() * Ants.MAX_MAP_SIZE * Ants.MAX_MAP_SIZE + _end.hashCode();
+        _hash = _start.hashCode() * Registry.MAX_MAP_SIZE * Registry.MAX_MAP_SIZE + _end.hashCode();
     }
 
     protected Route(Tile start, Tile end) {

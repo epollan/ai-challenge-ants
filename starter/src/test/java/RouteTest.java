@@ -75,8 +75,8 @@ public class RouteTest extends BaseTest {
     private void test(String map, int expectedRouteLength) throws Exception {
         buildState(map);
         long start = System.currentTimeMillis();
-        for (Tile ant : Ants.Instance.getMyAnts()) {
-            for (Tile food : Ants.Instance.getFoodTiles()) {
+        for (Tile ant : Registry.Instance.getMyAnts()) {
+            for (Tile food : Registry.Instance.getFoodTiles()) {
                 AStarRoute r = new AStarRoute(ant, food);
                 System.out.format("Route determined in %d ms\n", (System.currentTimeMillis()-start));
                 printRoute(r);

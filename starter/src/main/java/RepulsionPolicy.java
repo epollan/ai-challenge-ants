@@ -45,7 +45,7 @@ public class RepulsionPolicy {
         // Only evacuate those ants within the radius of repulsion
         Set<Tile> toEvacuate = new HashSet<Tile>();
         for (Tile ant : untargeted) {
-            int distance = Ants.Instance.getDistance(_epicenter, ant);
+            int distance = Registry.Instance.getDistance(_epicenter, ant);
             if (distance <= _radiusOfRepulsion) {
                 toEvacuate.add(ant);
             }

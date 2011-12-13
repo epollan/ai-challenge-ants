@@ -1,10 +1,9 @@
 import org.testng.annotations.BeforeClass;
-import org.testng.annotations.BeforeSuite;
+
 import java.io.BufferedReader;
 import java.io.StringReader;
 import java.util.HashMap;
 import java.util.Map;
-
 
 
 /**
@@ -19,7 +18,7 @@ public class BaseTest {
     @BeforeClass
     public void setup() {
         LogFacade.setTestConfig();
-        _dummyManager = new TimeManager(10000);
+        _dummyManager = new TimeManager(10000000);
         _dummyManager.nextStep();
         _dummyManager.nextStep();
         _dummyManager.nextStep();
@@ -53,6 +52,9 @@ public class BaseTest {
                     case 'W':
                         ilk = Ilk.WATER;
                         break;
+                    case 'E':
+                        ilk = Ilk.ENEMY_ANT;
+                        break;
                     default:
                         ilk = Ilk.LAND;
                 }
@@ -60,9 +62,13 @@ public class BaseTest {
             }
             rows++;
         }
-        Ants.initialize(0, 0, rows, cols, 0, 50, 0, 0);
+        Registry.initialize(0, 0, rows, cols, 0, 50, 5, 0);
         for (Map.Entry<Tile, Ilk> e : layout.entrySet()) {
-            Ants.Instance.update(e.getValue(), e.getKey());
+            if (e.getValue() == Ilk.ENEMY_ANT) {
+                Registry.Instance.update(e.getValue(), e.getKey(), 1);
+            } else {
+                Registry.Instance.update(e.getValue(), e.getKey());
+            }
         }
     }
 }

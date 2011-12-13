@@ -35,13 +35,13 @@ public class TargetingHistory {
                     // clobbering targeting histories unnecessarily
                     break;
                 case EnemyHill:
-                    present = Ants.Instance.getEnemyHills().contains(entry.getValue().Destination);
+                    present = Registry.Instance.getEnemyHills().contains(entry.getValue().Destination);
                     break;
                 case Food:
-                    present = Ants.Instance.getFoodTiles().contains(entry.getValue().Destination);
+                    present = Registry.Instance.getFoodTiles().contains(entry.getValue().Destination);
                     break;
                 case UnseenTile:
-                    present = Ants.Instance.isVisible(entry.getValue().Destination);
+                    present = Registry.Instance.isVisible(entry.getValue().Destination);
                     break;
                 default:
             }
@@ -168,7 +168,7 @@ public class TargetingHistory {
         _neighborsBuffer.clear();
         Tile lastNeighbor = center;
         for (Aim aim : traversal) {
-            Tile neighbor = Ants.Instance.getTile(lastNeighbor, aim);
+            Tile neighbor = Registry.Instance.getTile(lastNeighbor, aim);
             if (!neighbor.equals(next)) {
                 _neighborsBuffer.add(neighbor);
             }

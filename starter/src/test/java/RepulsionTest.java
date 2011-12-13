@@ -1,8 +1,4 @@
-import org.apache.log4j.Logger;
-import org.ietf.jgss.Oid;
 import org.testng.annotations.Test;
-
-import javax.sound.midi.VoiceStatus;
 
 /**
  * TODO
@@ -33,7 +29,7 @@ public class RepulsionTest extends BaseTest {
         // 4,8
         buildState(map);
         RepulsionPolicy policy = new RepulsionPolicy(new Tile(6, 8), 4);
-        policy.evacuate(Ants.Instance.getMyAnts(),
+        policy.evacuate(Registry.Instance.getMyAnts(),
                         _dummyManager,
                         new MovementHandler() {
                             @Override

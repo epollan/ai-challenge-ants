@@ -1,5 +1,4 @@
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -48,8 +47,8 @@ public class DefenseZone {
         // NW/NE/SE/SW of hill.
         final Tile[] offsets = {new Tile(-1, -1), new Tile(1, -1), new Tile(1, 1), new Tile(-1, 1)};
         for (Tile offset : offsets) {
-            Tile t = Ants.Instance.getTile(_hill, offset);
-            if (Ants.Instance.getIlk(t).isUnoccupied()) {
+            Tile t = Registry.Instance.getTile(_hill, offset);
+            if (Registry.Instance.getIlk(t).isUnoccupied()) {
                 _innerDefenses.add(t);
             }
         }
@@ -102,8 +101,8 @@ public class DefenseZone {
     }
 
     public final boolean hasAntsWithinAlarmRadius() {
-        for (Tile enemy : Ants.Instance.getEnemyAnts()) {
-            if (Ants.Instance.getDistance(_hill, enemy) <= _alarmRadius) {
+        for (Tile enemy : Registry.Instance.getEnemyAnts()) {
+            if (Registry.Instance.getDistance(_hill, enemy) <= _alarmRadius) {
                 return true;
             }
         }

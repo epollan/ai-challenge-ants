@@ -16,7 +16,7 @@ public class Tile implements Comparable<Tile> {
     public Tile(int row, int col) {
         _row = row;
         _col = col;
-        _hash = _row * Ants.MAX_MAP_SIZE + _col;
+        _hash = _row * Registry.MAX_MAP_SIZE + _col;
     }
     
     /**
@@ -59,7 +59,10 @@ public class Tile implements Comparable<Tile> {
     @Override
     public boolean equals(Object o) {
         boolean result = false;
-        if (o instanceof Tile) {
+        if (this == o) {
+            result = true;
+        }
+        else if (o instanceof Tile) {
             Tile tile = (Tile)o;
             result = _row == tile._row && _col == tile._col;
         }

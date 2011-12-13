@@ -1,6 +1,5 @@
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
@@ -42,7 +41,7 @@ public class Circumference implements Iterable<Tile> {
     
     public static int getMaximumRadius() {
         if (_maximumRadius == 0) {
-            _maximumRadius = (int) Math.floor((Math.min(Ants.Instance.getRows(), Ants.Instance.getCols()) - 1) / 2.0);
+            _maximumRadius = (int) Math.floor((Math.min(Registry.Instance.getRows(), Registry.Instance.getCols()) - 1) / 2.0);
         }
         return _maximumRadius;
     }
@@ -72,7 +71,7 @@ public class Circumference implements Iterable<Tile> {
         CircumferenceDirection currentDirection = CircumferenceDirection.SouthEast;
         Tile current = start;
         do {
-            if (Ants.Instance.getIlk(current).isPassable()) {
+            if (Registry.Instance.getIlk(current).isPassable()) {
                 _tiles.add(current);
             }
             current = getTile(current, currentDirection.getRowDelta(), currentDirection.getColDelta());
@@ -124,15 +123,15 @@ public class Circumference implements Iterable<Tile> {
     private Tile getTile(Tile start, int rowDelta, int colDelta) {
         int row = start.getRow() + rowDelta;
         if (row < 0) {
-            row += Ants.Instance.getRows();
-        } else if (row >= Ants.Instance.getRows()) {
-            row -= Ants.Instance.getRows();
+            row += Registry.Instance.getRows();
+        } else if (row >= Registry.Instance.getRows()) {
+            row -= Registry.Instance.getRows();
         }
         int col = start.getCol() + colDelta;
         if (col < 0) {
-            col += Ants.Instance.getCols();
-        } else if (col >= Ants.Instance.getCols()) {
-            col -= Ants.Instance.getCols();
+            col += Registry.Instance.getCols();
+        } else if (col >= Registry.Instance.getCols()) {
+            col -= Registry.Instance.getCols();
         }
         return new Tile(row, col);
     }

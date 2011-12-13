@@ -1,3 +1,5 @@
+import sun.security.jgss.spi.MechanismFactory;
+
 import java.io.IOException;
 import java.util.*;
 
@@ -37,7 +39,9 @@ public class MyBot extends Bot {
     private final static float TARGETING_ROUTE_CALC_STEP_WEIGHT = 1.8f;
     private final static float TARGETING_ROUTE_MOVE_STEP_WEIGHT = 1.0f;
     private final static float HILL_REPULSION_STEP_WEIGHT = 1.0f;
+    private final static float COMBAT_ZONE_COMBAT = 3.0f;
 
+    private List<CombatZone> _combatZones = new ArrayList<CombatZone>();
     private final Set<Tile> _untargetedAnts = new HashSet<Tile>();
     private final Set<Tile> _destinations = new HashSet<Tile>();
     private final Set<Tile> _toMove = new HashSet<Tile>();
@@ -64,13 +68,15 @@ public class MyBot extends Bot {
                     antsCloseToHills = true;
                 }
             }
+            /*
             if (antsCloseToHills) {
                 attackAnts();
             }
+            */
 
             followBreadcrumbs();
 
-            if (Ants.Instance.getMyAnts().size() < 10) {
+            if (Registry.Instance.getMyAnts().size() < 10) {
                 seekFood();
                 attackHills();
             } else {
@@ -78,9 +84,12 @@ public class MyBot extends Bot {
                 seekFood();
             }
 
+            /*
             if (!antsCloseToHills) {
                 attackAnts();
             }
+            */
+            engageInCombat();
 
             defendMyHills();
 
@@ -99,10 +108,10 @@ public class MyBot extends Bot {
         _log.info(String.format("[[...turn %d...]]", _turn));
 
         // Track targeted ants through turn
-        _untargetedAnts.addAll(Ants.Instance.getMyAnts());
+        _untargetedAnts.addAll(Registry.Instance.getMyAnts());
 
         // Time management
-        int managedTimeAllocation = Ants.Instance.getTurnTime() - TIME_ALLOCATION_PAD;
+        int managedTimeAllocation = Registry.Instance.getTurnTime() - TIME_ALLOCATION_PAD;
         if (_timeManager == null || _timeManager.getTotalAllowed() != managedTimeAllocation) {
             _timeManager = new TimeManager(managedTimeAllocation);
         }
@@ -112,22 +121,21 @@ public class MyBot extends Bot {
 
         // Don't defend old hills
         for (Iterator<Tile> oldHills = _myHillRepulsions.keySet().iterator();
-                oldHills.hasNext();) {
+             oldHills.hasNext(); ) {
             Tile oldHill = oldHills.next();
-            if (!Ants.Instance.getMyHills().contains(oldHill)) {
+            if (!Registry.Instance.getMyHills().contains(oldHill)) {
                 _log.debug("Removing repulsion/defense policy for dead hill [%s]", oldHill);
                 oldHills.remove();
             }
         }
-        for (Tile myHill : Ants.Instance.getMyHills()) {
+        for (Tile myHill : Registry.Instance.getMyHills()) {
             RepulsionPolicy hillRepulsion = _myHillRepulsions.get(myHill);
             if (hillRepulsion == null) {
                 long repulseStart = System.currentTimeMillis();
                 // Aim to keep ants at least 6 moves away from my hills
                 _myHillRepulsions.put(myHill, new RepulsionPolicy(myHill, MY_HILL_RADIUS_OF_REPULSION));
                 _log.debug("Created RepulsionPolicy in %d ms", System.currentTimeMillis() - repulseStart);
-            }
-            else {
+            } else {
                 hillRepulsion.getDefenseZone().leaveInnerDefensesStaffed(_untargetedAnts);
             }
         }
@@ -135,10 +143,10 @@ public class MyBot extends Bot {
         if (_unseenTiles == null || _turn % UNSEEN_TILE_RECALC_PERIOD == 0) {
             _unseenTiles = new HashSet<Tile>();
             // Sparsely sample the board for unseen tiles
-            for (int row = 0; row < Ants.Instance.getRows(); row += UNSEEN_TILE_SAMPLING_RATE) {
-                for (int col = 0; col < Ants.Instance.getCols(); col += UNSEEN_TILE_SAMPLING_RATE) {
+            for (int row = 0; row < Registry.Instance.getRows(); row += UNSEEN_TILE_SAMPLING_RATE) {
+                for (int col = 0; col < Registry.Instance.getCols(); col += UNSEEN_TILE_SAMPLING_RATE) {
                     Tile t = new Tile(row, col);
-                    if (!Ants.Instance.isVisible(t) && Ants.Instance.getIlk(t) != Ilk.WATER) {
+                    if (!Registry.Instance.isVisible(t) && Registry.Instance.getIlk(t) != Ilk.WATER) {
                         _unseenTiles.add(t);
                     }
                 }
@@ -147,11 +155,13 @@ public class MyBot extends Bot {
             // remove any tiles that can be seen, run each turn
             for (Iterator<Tile> locIter = _unseenTiles.iterator(); locIter.hasNext(); ) {
                 Tile next = locIter.next();
-                if (Ants.Instance.isVisible(next)) {
+                if (Registry.Instance.isVisible(next)) {
                     locIter.remove();
                 }
             }
         }
+
+        createCombatZones();
     }
 
     private void concludeTurn() {
@@ -161,7 +171,7 @@ public class MyBot extends Bot {
         long start = _timeManager.getTurnStartMs();
         long finish = System.currentTimeMillis();
         _log.info(String.format("[[ # turn %d processing took %d ms, allowed %d.  Overall remaining: %d # ]]",
-                                _turn, finish - start, Ants.Instance.getTurnTime(), Ants.Instance.getTimeRemaining()));
+                                _turn, finish - start, Registry.Instance.getTurnTime(), Registry.Instance.getTimeRemaining()));
 
         _destinations.clear();
         int numTargetedAnts = _toMove.size();
@@ -175,9 +185,107 @@ public class MyBot extends Bot {
     }
 
     private void avoidHills() {
-        for (Tile myHill : Ants.Instance.getMyHills()) {
+        for (Tile myHill : Registry.Instance.getMyHills()) {
             _destinations.add(myHill);
         }
+    }
+
+    private void createCombatZones() {
+        long start = System.currentTimeMillis();
+        _combatZones.clear();
+        Map<Tile, List<EnemyAnt>> enemiesInRange = null;
+        Map<EnemyAnt, List<Tile>> alliesInRange = null;
+        int range2 = Registry.Instance.getAttackRadius2() * 3 + 2;
+        // Find each ant's close-by enemies
+        for (Tile myPos : Registry.Instance.getMyAnts()) {
+            List<EnemyAnt> inRange = null;
+            for (Tile enemyPos : Registry.Instance.getEnemyAnts()) {
+                if (Registry.Instance.getDistance2(myPos, enemyPos) <= range2) {
+                    _log.debug("COMBAT: candidates within %d (sq):  me [%s], enemy [%s]",
+                               range2, myPos, enemyPos);
+                    EnemyAnt enemyAnt = Registry.Instance.getTeamedEnemyAnt(enemyPos);
+                    // Map enemies by ally
+                    if (inRange == null) {
+                        if (enemiesInRange == null) {
+                            enemiesInRange = new HashMap<Tile, List<EnemyAnt>>();
+                        }
+                        inRange = enemiesInRange.get(myPos);
+                        if (inRange == null) {
+                            inRange = new ArrayList<EnemyAnt>(Registry.Instance.getEnemyAnts().size());
+                            enemiesInRange.put(myPos, inRange);
+                        }
+                    }
+                    inRange.add(enemyAnt);
+                    // Map allies by enemy
+                    if (alliesInRange == null) {
+                        alliesInRange = new HashMap<EnemyAnt, List<Tile>>();
+                    }
+                    List<Tile> allies = alliesInRange.get(enemyAnt);
+                    if (allies == null) {
+                        allies = new ArrayList<Tile>(Registry.Instance.getMyAnts().size());
+                        alliesInRange.put(enemyAnt, allies);
+                    }
+                    allies.add(myPos);
+                }
+            }
+        }
+        // Any ants that share "regional" enemies should be included in the same CombatZone
+        while (enemiesInRange != null && enemiesInRange.size() > 0) {
+            Set<Ant> combatZoneAnts = new HashSet<Ant>(Registry.Instance.getMyAnts().size() +
+                                                       Registry.Instance.getEnemyAnts().size());
+            Tile me = enemiesInRange.keySet().iterator().next();
+            if (combatZoneAnts.add(new Ant(me))) {
+                addNearEnemies(combatZoneAnts, enemiesInRange, alliesInRange, me);
+            }
+            _combatZones.add(new CombatZone(combatZoneAnts));
+        }
+        _log.debug("Took %d ms to create %d combat zones",
+                   System.currentTimeMillis() - start, _combatZones.size());
+    }
+
+    private void addNearEnemies(Set<Ant> combatZoneAnts,
+                                Map<Tile, List<EnemyAnt>> enemiesByAlly,
+                                Map<EnemyAnt, List<Tile>> alliesByEnemy,
+                                Tile me) {
+        // Ants in combat zones have their movement managed by the zone -- don't separately target them
+        _untargetedAnts.remove(me);
+        List<EnemyAnt> myEnemies = enemiesByAlly.get(me);
+        enemiesByAlly.remove(me);
+        for (EnemyAnt enemy : myEnemies) {
+            if (combatZoneAnts.add(enemy)) {
+                addNearAllies(combatZoneAnts, enemiesByAlly, alliesByEnemy, enemy);
+            }
+        }
+    }
+
+    private void addNearAllies(Set<Ant> combatZoneAnts,
+                               Map<Tile, List<EnemyAnt>> enemiesByAlly,
+                               Map<EnemyAnt, List<Tile>> alliesByEnemy,
+                               EnemyAnt enemy) {
+        List<Tile> alliesSharingEnemy = alliesByEnemy.get(enemy);
+        alliesByEnemy.remove(enemy);
+        for (Tile ally : alliesSharingEnemy) {
+            if (combatZoneAnts.add(new Ant(ally))) {
+                addNearEnemies(combatZoneAnts, enemiesByAlly, alliesByEnemy, ally);
+            }
+        }
+    }
+
+    private void engageInCombat() {
+        _timeManager.nextStep(COMBAT_ZONE_COMBAT, "Combat");
+        for (CombatZone zone : _combatZones) {
+            long start = System.currentTimeMillis();
+            zone.move(_timeManager,
+                      new MovementHandler() {
+                          @Override
+                          public boolean move(Tile ant, Tile nextTile) {
+                              return moveToLocation(ant, nextTile);
+                          }
+                      });
+            _log.debug("Took %d ms to engage in combat between %d ants",
+                       System.currentTimeMillis() - start, zone.getAntCount());
+        }
+
     }
 
     private void followBreadcrumbs() {
@@ -205,22 +313,22 @@ public class MyBot extends Bot {
     }
 
     private void seekFood() {
-        targetTiles(Ants.Instance.getFoodTiles(), TargetingPolicy.get(TargetingPolicy.Type.Food));
+        targetTiles(Registry.Instance.getFoodTiles(), TargetingPolicy.get(TargetingPolicy.Type.Food));
     }
 
     private void attackHills() {
-        targetTiles(Ants.Instance.getEnemyHills(), TargetingPolicy.get(TargetingPolicy.Type.EnemyHill));
+        targetTiles(Registry.Instance.getEnemyHills(), TargetingPolicy.get(TargetingPolicy.Type.EnemyHill));
     }
 
     private void attackAnts() {
-        targetTiles(Ants.Instance.getEnemyAnts(), TargetingPolicy.get(TargetingPolicy.Type.EnemyAnt));
+        targetTiles(Registry.Instance.getEnemyAnts(), TargetingPolicy.get(TargetingPolicy.Type.EnemyAnt));
     }
 
     private void defendMyHills() {
         Set<Tile> unoccupiedStations = new HashSet<Tile>();
         for (RepulsionPolicy repulsion : _myHillRepulsions.values()) {
             for (Tile station : repulsion.getDefenseZone().getInnerDefenses()) {
-                if (!Ants.Instance.getMyAnts().contains(station)) {
+                if (!Registry.Instance.getMyAnts().contains(station)) {
                     unoccupiedStations.add(station);
                 }
             }
@@ -248,7 +356,7 @@ public class MyBot extends Bot {
                             });
         }
         _log.debug("Unblocked hills, %d elapsed, %d ms remaining in turn",
-                   System.currentTimeMillis() - start, Ants.Instance.getTimeRemaining());
+                   System.currentTimeMillis() - start, Registry.Instance.getTimeRemaining());
     }
 
     private void targetTiles(Collection<Tile> targets, TargetingPolicy policy) {
@@ -272,7 +380,7 @@ public class MyBot extends Bot {
                               policy.toString() + ":Movement");
         moveToTargets(targets, policy);
         _log.debug("%s targeting complete, %d elapsed, %d ms remaining in turn...",
-                   policy, System.currentTimeMillis() - start, Ants.Instance.getTimeRemaining());
+                   policy, System.currentTimeMillis() - start, Registry.Instance.getTimeRemaining());
     }
 
     private Map<Tile, List<Tile>> sortTargetsByAnt(final Collection<Tile> targets,
@@ -304,8 +412,8 @@ public class MyBot extends Bot {
             Collections.sort(relativeToAnt, new Comparator<Tile>() {
                 @Override
                 public int compare(Tile o1, Tile o2) {
-                    int d1 = Ants.Instance.getDistance(ant, o1);
-                    int d2 = Ants.Instance.getDistance(ant, o2);
+                    int d1 = Registry.Instance.getDistance(ant, o1);
+                    int d2 = Registry.Instance.getDistance(ant, o2);
                     if (d1 == d2) {
                         return o1.compareTo(o2);
                     }
@@ -349,12 +457,12 @@ public class MyBot extends Bot {
                         final AStarRoute route = new AStarRoute(ant, target);
                         _routesToTargets.add(route);
                         _log.debug("%s route candidate for ant [%s] to tile [%s] (dist=%d): %s",
-                                   policy, ant, target, Ants.Instance.getDistance(ant, target), route);
+                                   policy, ant, target, Registry.Instance.getDistance(ant, target), route);
                         ++thisAntsRoutes;
                         if (policy.getPerAntRouteLimit() != null &&
                             thisAntsRoutes >= policy.getPerAntRouteLimit().intValue()) {
                             _log.debug("Capping routes for ant [%s] at %d under %s consideration, %d ms remaining...",
-                                       ant, thisAntsRoutes, policy, Ants.Instance.getTimeRemaining());
+                                       ant, thisAntsRoutes, policy, Registry.Instance.getTimeRemaining());
                             break;
                         }
                     } catch (NoRouteException ex) {
@@ -405,10 +513,10 @@ public class MyBot extends Bot {
                 }
                 targetRoutes.add(r);
             }
-            final X.Function<AStarRoute> floorSatisfied =
-                    new X.Function<AStarRoute>() {
+            final X.Function<Boolean, AStarRoute> floorSatisfied =
+                    new X.Function<Boolean, AStarRoute>() {
                         @Override
-                        public boolean eval(AStarRoute... args) {
+                        public Boolean eval(AStarRoute... args) {
                             if (!policy.needsMoreAssignments(args[0].getEnd())) {
                                 _log.info("Met targeting floor for [%s]", args[0].getEnd());
                                 return true;
@@ -461,7 +569,7 @@ public class MyBot extends Bot {
     private boolean moveToTarget(final AStarRoute route,
                                  final TargetingPolicy policy,
                                  final int numTargets,
-                                 final X.Function<AStarRoute> finishedCondition,
+                                 final X.Function<Boolean, AStarRoute> finishedCondition,
                                  final X.ReferenceInt candidateAnts) {
         if (policy.canAssign(route.getStart(), route.getEnd()) && move(route)) {
             policy.assign(route.getStart(), route.getEnd());
@@ -491,9 +599,9 @@ public class MyBot extends Bot {
 
     private boolean moveInDirection(Tile antLoc, Aim direction) {
         // Track all moves, prevent collisions
-        Tile newLoc = Ants.Instance.getTile(antLoc, direction);
-        if (Ants.Instance.getIlk(newLoc).isUnoccupied() && !_destinations.contains(newLoc)) {
-            Ants.Instance.issueOrder(antLoc, direction);
+        Tile newLoc = Registry.Instance.getTile(antLoc, direction);
+        if (Registry.Instance.getIlk(newLoc).isUnoccupied() && !_destinations.contains(newLoc)) {
+            Registry.Instance.issueOrder(antLoc, direction);
             _destinations.add(newLoc);
             _toMove.add(antLoc);
             _untargetedAnts.remove(antLoc);
@@ -505,7 +613,7 @@ public class MyBot extends Bot {
     }
 
     private boolean moveToLocation(Tile antLoc, Tile destLoc) {
-        List<Aim> directions = Ants.Instance.getDirections(antLoc, destLoc);
+        List<Aim> directions = Registry.Instance.getDirections(antLoc, destLoc);
         for (Aim direction : directions) {
             if (moveInDirection(antLoc, direction)) {
                 return true;

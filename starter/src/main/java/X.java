@@ -3,8 +3,8 @@
  */
 public class X {
 
-    public interface Function<T> {
-        boolean eval(T... args);
+    public interface Function<R, T> {
+        R eval(T... args);
     }
 
     public interface Action<T> {
@@ -17,5 +17,12 @@ public class X {
         public ReferenceInt() {}
         public ReferenceInt(int val) {Value = val;}
         public int Value = 0;
+
+    }
+
+    public static class ReferenceAim {
+        public Aim Value;
+        public ReferenceAim() {}
+        public ReferenceAim(Aim v) {Value = v;}
     }
 }
