@@ -19,7 +19,9 @@ public class TargetInfluenceMap {
         _seeded = new boolean[r.getRows()][r.getCols()];
     }
 
-    public void reset(Iterable<Tile> unseenTiles, TimeManager time) {
+    public void reset(Iterable<Tile> unseenTiles,
+                      TimeManager time,
+                      Iterable<DefenseZone> defenses) {
         for (double[] row : _influence) {
             Arrays.fill(row, 0, row.length, 0.0);
         }
@@ -29,8 +31,18 @@ public class TargetInfluenceMap {
         Registry r = Registry.Instance;
         seedInfluence(r.getEnemyHills(), Integer.MAX_VALUE);
         seedInfluence(r.getFoodTiles(), Integer.MAX_VALUE / 1.5);
-        seedInfluence(unseenTiles, Integer.MAX_VALUE / 20.0);
+        seedInfluence(unseenTiles, Integer.MAX_VALUE / 3.0);
+
+        for (DefenseZone defenseZone : defenses) {
+            if (defenseZone.hasAntsWithinAlarmRadius()) {
+                // Draw attention to invaders
+                seedInfluence(defenseZone.getInvaders(), Integer.MAX_VALUE);
+            }
+            //seedInfluence(defenseZone.getStrongpoints(), Integer.MAX_VALUE / 250.0);
+        }
+
         diffuse(time);
+
         for (Tile hill : r.getMyHills()) {
             // Discourage hill-squatting -- do this after diffusion
             _influence[hill.getRow()][hill.getCol()] = 0.0;
@@ -84,11 +96,14 @@ public class TargetInfluenceMap {
         if (_seeded[row][col] || Registry.Instance.getIlk(row, col) == Ilk.WATER) {
             return;
         }
-        _influence[row][col] =
+        double diffused =
                 get(row - 1, col, 0.25) +
                 get(row + 1, col, 0.25) +
                 get(row, col - 1, 0.25) +
                 get(row, col + 1, 0.25);
+        if (!_seeded[row][col] || diffused > _influence[row][col]) {
+            _influence[row][col] = diffused;
+        }
     }
 
     private double get(int row, int col, double contribution) {

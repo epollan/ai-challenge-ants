@@ -17,8 +17,10 @@ public class CombatZone {
     private List<Ant> _myAnts = new ArrayList<Ant>();
     private List<Ant> _allAnts = new ArrayList<Ant>();
     private int[] _indexes;
+    private float _myAntLossFactor = -1.02f;
 
-    public static final int MAX_ANTS = 13; // 5^13 ~ 1.2 billion possible permutations
+    private static final int HILL_PROXIMITY = 8;
+    public static final int MAX_ANTS = 8; // 5^8 ~ 300K possible permutations
     private static final LogFacade _log = LogFacade.get(CombatZone.class);
     private static final X.ReferenceAim[] _moveDirections = {
             null,
@@ -30,16 +32,25 @@ public class CombatZone {
 
     public CombatZone(Iterable<Ant> ants) {
         _antMap = new Ant[Registry.Instance.getRows()][Registry.Instance.getCols()]; // initialized to null
+        boolean closeToHill = false;
         for (Ant a : ants) {
             if (a.getTeam() == 0) {
                 _myAnts.add(a);
             } else {
                 // Only put enemies in _allAnts for now
+                if (!closeToHill) {
+                    // Slightly different scoring heuristics when we're too close to a hill
+                    for (Tile hill : Registry.Instance.getMyHills()) {
+                        if (Registry.Instance.getDistance(a.getPosition(), hill) <= HILL_PROXIMITY) {
+                            closeToHill = true;
+                        }
+                    }
+                }
                 _allAnts.add(a);
             }
         }
         // Whittle down the size of the list of ants considered for combat.  Err on the side
-        // of retaining my ants
+        // of retaining my ants.
         while (_myAnts.size() + _allAnts.size() > MAX_ANTS) {
             if (_allAnts.size() > _myAnts.size()) {
                 _log.debug("COMBAT:  too many ants, removing enemy at [%s]", _allAnts.remove(0).getPosition());
@@ -54,10 +65,21 @@ public class CombatZone {
             _antMap[a.getPosition().getRow()][a.getPosition().getCol()] = a;
         }
         _indexes = new int[_allAnts.size()];
+        if (closeToHill) {
+            _myAntLossFactor = -0.95f;
+        }
+        else if ((1.0 * (_allAnts.size() - _myAnts.size())) / (1.0 * _allAnts.size()) <= 0.25) {
+            _log.info("Incentivizing attacks -- 4-to-1 advantage");
+            _myAntLossFactor = -0.50f;
+        }
     }
 
     public int getAntCount() {
         return _allAnts.size();
+    }
+
+    public Iterable<Ant> getMyAntsInCombat() {
+        return _myAnts;
     }
 
     private void incrementIndexes() {
@@ -174,7 +196,8 @@ public class CombatZone {
         Map<MoveKey, MoveKey> moves =
                 new HashMap<MoveKey, MoveKey>((int) Math.pow(_moveDirections.length, _myAnts.size()));
 
-        for (int permutation = 0; permutation < Math.pow(_moveDirections.length, _allAnts.size()); permutation++) {
+        int permutations = (int) Math.pow(_moveDirections.length, _allAnts.size());
+        for (int permutation = 0; permutation < permutations; permutation++) {
             boolean validMove = true;
             for (int matrixPos = 0; matrixPos < moveMatrix.length; matrixPos++) {
                 X.ReferenceAim aim = _moveDirections[_indexes[matrixPos]];
@@ -206,15 +229,24 @@ public class CombatZone {
                 // Illegal move
             }
             if (timeManager.stepTimeOverrun()) {
+                _log.info("Timed out after scoring %d of %d combat move permutations",
+                          permutation, permutations);
                 break;
             }
             incrementIndexes();
         }
 
         MoveKey bestMove = null;
+        permutations = 0;
         for (MoveKey key : moves.keySet()) {
             if (bestMove == null || key.getScore() > bestMove.getScore()) {
                 bestMove = key;
+            }
+            permutations++;
+            if (timeManager.stepTimeOverrun()) {
+                _log.info("Timed out after comparing %d of %d combat moves",
+                          permutations, moves.size());
+                break;
             }
         }
         if (bestMove != null) {
@@ -290,8 +322,7 @@ public class CombatZone {
                 }
                 if (minEnemyWeakness <= weakness) {
                     // Ant dies -- there exists at least one enemy as strong or stronger within range
-                    // If we die, take 2.0 off the score.  if they die, add 1.0
-                    score += (a.getTeam() != 0) ? 1.0f : -2.0f;
+                    score += (a.getTeam() != 0) ? 1.0f : _myAntLossFactor;
                     _log.debug("COMBAT:  [%s] (team=%d) dies when in tile [%s]",
                                a.getPosition(), a.getTeam(), a.getNextCombatPosition());
                 }

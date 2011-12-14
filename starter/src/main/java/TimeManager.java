@@ -11,7 +11,7 @@ public final class TimeManager {
     private final long _totalAllowed;
     private int _currentStep = 0;
     private long _turnStartMs;
-    private long _stepStartMs;
+    private long _stepTimoutMs;
     private long[] _stepAllowedMs;
     private List<Float> _stepWeights = new LinkedList<Float>();
     private String[] _stepDescriptions;
@@ -42,12 +42,11 @@ public final class TimeManager {
             // First pass -- haven't figured out step allocations
             return false;
         }
-        long elapsed = System.currentTimeMillis() - _stepStartMs;
-        if (elapsed > _stepAllowedMs[_currentStep]) {
+        if (System.currentTimeMillis() > _stepTimoutMs) {
             _log.info("Step '%s' (#%d of %d) overran allotted time of %d ms by %d ms",
                       _stepDescriptions[_currentStep], _currentStep + 1,
                       _stepAllowedMs.length, _stepAllowedMs[_currentStep],
-                      elapsed - _stepAllowedMs[_currentStep]);
+                      System.currentTimeMillis() - _stepTimoutMs);
             return true;
         }
         return false;
@@ -62,10 +61,12 @@ public final class TimeManager {
      */
     public void nextStep(float weight, String stepDescription) {
         ++_currentStep;
-        _stepStartMs = System.currentTimeMillis();
         if (_stepWeights != null) {
             _stepWeights.add(new Float(weight));
             _wipStepDescriptions.add(stepDescription);
+        }
+        else {
+            _stepTimoutMs = System.currentTimeMillis() + _stepAllowedMs[_currentStep];
         }
     }
 
@@ -113,19 +114,8 @@ public final class TimeManager {
             for (Float weight : _stepWeights) {
                 totalWeight += weight.floatValue();
             }
-            // Figure out what a weight of 1.0 would be allocated
-            double weight1Allocation = (_totalAllowed * 1.0) / totalWeight;
-            _stepAllowedMs = new long[_stepWeights.size()];
-            for (int i = 0; i < _stepAllowedMs.length; i++) {
-                // Assign each step's millisecond allocation as a factor of its step weight
-                _stepAllowedMs[i] = (long) Math.floor(weight1Allocation * _stepWeights.get(i).floatValue());
-                _log.info("Calculated step time allocation for step #%d of %d to be %d ms",
-                          (i + 1), _stepAllowedMs.length, _stepAllowedMs[i]);
-            }
-            // Clear reference to list of step weights -- not needed any more
-            _stepWeights = null;
 
-            // Repeat process for step descriptions
+            // Initialize step description array
             _stepDescriptions = new String[_wipStepDescriptions.size()];
             for (int i = 0; i < _stepDescriptions.length; i++) {
                 _stepDescriptions[i] = _wipStepDescriptions.get(i);
@@ -134,6 +124,18 @@ public final class TimeManager {
                 }
             }
             _wipStepDescriptions = null;
+
+            // Figure out what a weight of 1.0 would be allocated
+            double weight1Allocation = (_totalAllowed * 1.0) / totalWeight;
+            _stepAllowedMs = new long[_stepWeights.size()];
+            for (int i = 0; i < _stepAllowedMs.length; i++) {
+                // Assign each step's millisecond allocation as a factor of its step weight
+                _stepAllowedMs[i] = (long) Math.floor(weight1Allocation * _stepWeights.get(i).floatValue());
+                _log.info("Calculated step time allocation for step '%s' (#%d of %d) to be %d ms",
+                          _stepDescriptions[i], (i + 1), _stepAllowedMs.length, _stepAllowedMs[i]);
+            }
+            // Clear reference to list of step weights -- not needed any more
+            _stepWeights = null;
         }
         _currentStep = -1;
     }
