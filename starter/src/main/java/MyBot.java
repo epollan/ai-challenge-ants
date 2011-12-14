@@ -23,7 +23,7 @@ public class MyBot extends Bot {
     private final static int MY_HILL_RADIUS_OF_REPULSION = 6;
     private final static int UNSEEN_TILE_SAMPLING_RATE = 5;
     private final static int UNSEEN_TILE_RECALC_PERIOD = 5;
-    private final static float HILL_REPULSION_STEP_WEIGHT = 1.0f;
+    private final static float COMBAT_ZONE_SETUP = 1.0f;
     private final static float COMBAT_ZONE_COMBAT = 5.0f;
     private final static float INFLUENCE_MAP_SETUP = 1.0f;
     private final static float INFLUENCE_MAP_MOVEMENT = 1.0f;
@@ -103,7 +103,7 @@ public class MyBot extends Bot {
                 long repulseStart = System.currentTimeMillis();
                 // Aim to keep ants at least 6 moves away from my hills
                 _myHillDefenses.put(myHill, new DefenseZone(myHill, MY_HILL_RADIUS_OF_REPULSION));
-                _log.debug("Created DefenseZone in %d ms", System.currentTimeMillis() - repulseStart);
+                _log.info("Created DefenseZone in %d ms", System.currentTimeMillis() - repulseStart);
             }
         }
 
@@ -167,6 +167,7 @@ public class MyBot extends Bot {
     private void createCombatZones() {
         long start = System.currentTimeMillis();
         _combatZones.clear();
+        _timeManager.nextStep(COMBAT_ZONE_SETUP, "Combat Zone Setup");
         Map<Tile, List<EnemyAnt>> enemiesInRange = null;
         Map<EnemyAnt, List<Tile>> alliesInRange = null;
         int range2 = Registry.Instance.getAttackRadius2() * 3 + 2;
@@ -202,9 +203,12 @@ public class MyBot extends Bot {
                     allies.add(myPos);
                 }
             }
+            if (_timeManager.stepTimeOverrun()) {
+                break;
+            }
         }
         // Any ants that share "regional" enemies should be included in the same CombatZone
-        while (enemiesInRange != null && enemiesInRange.size() > 0) {
+        while (enemiesInRange != null && enemiesInRange.size() > 0 && !_timeManager.stepTimeOverrun()) {
             Set<Ant> combatZoneAnts = new HashSet<Ant>(Registry.Instance.getMyAnts().size() +
                                                        Registry.Instance.getEnemyAnts().size());
             Tile me = enemiesInRange.keySet().iterator().next();
@@ -213,11 +217,8 @@ public class MyBot extends Bot {
             }
             CombatZone zone = new CombatZone(combatZoneAnts);
             _combatZones.add(zone);
-            for (Ant inCombat : zone.getMyAntsInCombat()) {
-                _untargetedAnts.remove(inCombat.getPosition());
-            }
         }
-        _log.debug("Took %d ms to create %d combat zones",
+        _log.info("Took %d ms to create %d combat zones",
                    System.currentTimeMillis() - start, _combatZones.size());
     }
 
@@ -225,6 +226,9 @@ public class MyBot extends Bot {
                                 Map<Tile, List<EnemyAnt>> enemiesByAlly,
                                 Map<EnemyAnt, List<Tile>> alliesByEnemy,
                                 Tile me) {
+        if (_timeManager.stepTimeOverrun()) {
+            return;
+        }
         List<EnemyAnt> myEnemies = enemiesByAlly.get(me);
         enemiesByAlly.remove(me);
         for (EnemyAnt enemy : myEnemies) {
@@ -238,6 +242,9 @@ public class MyBot extends Bot {
                                Map<Tile, List<EnemyAnt>> enemiesByAlly,
                                Map<EnemyAnt, List<Tile>> alliesByEnemy,
                                EnemyAnt enemy) {
+        if (_timeManager.stepTimeOverrun()) {
+            return;
+        }
         List<Tile> alliesSharingEnemy = alliesByEnemy.get(enemy);
         alliesByEnemy.remove(enemy);
         for (Tile ally : alliesSharingEnemy) {

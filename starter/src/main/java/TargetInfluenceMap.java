@@ -12,6 +12,7 @@ public class TargetInfluenceMap {
     private final double[][] _influence;
     private final boolean[][] _seeded;
     private static final LogFacade _log = LogFacade.get(TargetInfluenceMap.class);
+    private static final float FOOD_TO_ANT_SCENT_RATIO = 0.25f;
 
     public TargetInfluenceMap() {
         Registry r = Registry.Instance;
@@ -30,8 +31,13 @@ public class TargetInfluenceMap {
         }
         Registry r = Registry.Instance;
         seedInfluence(r.getEnemyHills(), Integer.MAX_VALUE);
-        seedInfluence(r.getFoodTiles(), Integer.MAX_VALUE / 1.5);
+        // Food influence will decay as our number of ants increases
+        double foodInfluence =
+                Math.min(Integer.MAX_VALUE,
+                         Integer.MAX_VALUE / (r.getMyAnts().size() * FOOD_TO_ANT_SCENT_RATIO));
+        seedInfluence(r.getFoodTiles(), foodInfluence);
         seedInfluence(unseenTiles, Integer.MAX_VALUE / 3.0);
+        seedInfluence(r.getEnemyAnts(), Integer.MAX_VALUE / 5.0);
 
         for (DefenseZone defenseZone : defenses) {
             if (defenseZone.hasAntsWithinAlarmRadius()) {
@@ -75,7 +81,7 @@ public class TargetInfluenceMap {
     }
 
     private void diffuse(TimeManager time) {
-        for (int rep = 0; rep < 50; rep++) {
+        for (int rep = 0; rep < 60; rep++) {
             for (int row = 0; row < _influence.length; row++) {
                 for (int col = 0; col < _influence[row].length; col++) {
                     propagate(row, col);
@@ -86,7 +92,7 @@ public class TargetInfluenceMap {
                     propagate(row, col);
                 }
             }
-            if (time.stepTimeOverrun()) {
+            if (rep % 15 == 0 && time.stepTimeOverrun()) {
                 break;
             }
         }
