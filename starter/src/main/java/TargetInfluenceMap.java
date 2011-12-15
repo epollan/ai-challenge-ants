@@ -12,7 +12,7 @@ public class TargetInfluenceMap {
     private final double[][] _influence;
     private final boolean[][] _seeded;
     private static final LogFacade _log = LogFacade.get(TargetInfluenceMap.class);
-    private static final float FOOD_TO_ANT_SCENT_RATIO = 0.25f;
+    private static final float FOOD_TO_ANT_SCENT_RATIO = 0.1f;
 
     public TargetInfluenceMap() {
         Registry r = Registry.Instance;
@@ -21,6 +21,7 @@ public class TargetInfluenceMap {
     }
 
     public void reset(Iterable<Tile> unseenTiles,
+                      Iterable<Tile> enemyHills,
                       TimeManager time,
                       Iterable<DefenseZone> defenses) {
         for (double[] row : _influence) {
@@ -30,10 +31,10 @@ public class TargetInfluenceMap {
             Arrays.fill(row, 0, row.length, false);
         }
         Registry r = Registry.Instance;
-        seedInfluence(r.getEnemyHills(), Integer.MAX_VALUE);
+        seedInfluence(enemyHills, Integer.MAX_VALUE);
         // Food influence will decay as our number of ants increases
         double foodInfluence =
-                Math.min(Integer.MAX_VALUE,
+                Math.min(Integer.MAX_VALUE / 1.5,
                          Integer.MAX_VALUE / (r.getMyAnts().size() * FOOD_TO_ANT_SCENT_RATIO));
         seedInfluence(r.getFoodTiles(), foodInfluence);
         seedInfluence(unseenTiles, Integer.MAX_VALUE / 3.0);

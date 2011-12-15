@@ -18,6 +18,7 @@ public class CombatZone {
     private List<Ant> _allAnts = new ArrayList<Ant>();
     private int[] _indexes;
     private float _myAntLossFactor = -1.02f;
+    private boolean _timedOut = false;
 
     private static final int HILL_PROXIMITY = 8;
     public static final int MAX_ANTS = 8; // 5^8 ~ 300K possible permutations
@@ -91,6 +92,10 @@ public class CombatZone {
                 break;
             }
         }
+    }
+
+    public boolean getTimedOut() {
+        return _timedOut;
     }
 
     private static class MoveKey {
@@ -231,6 +236,7 @@ public class CombatZone {
             if (timeManager.stepTimeOverrun()) {
                 _log.info("Timed out after scoring %d of %d combat move permutations",
                           permutation, permutations);
+                _timedOut = true;
                 break;
             }
             incrementIndexes();
@@ -243,9 +249,10 @@ public class CombatZone {
                 bestMove = key;
             }
             permutations++;
-            if (timeManager.stepTimeOverrun()) {
+            if (_timedOut || timeManager.stepTimeOverrun()) {
                 _log.info("Timed out after comparing %d of %d combat moves",
                           permutations, moves.size());
+                _timedOut = true;
                 break;
             }
         }

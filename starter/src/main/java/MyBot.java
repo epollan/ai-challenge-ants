@@ -23,6 +23,7 @@ public class MyBot extends Bot {
     private final static int MY_HILL_RADIUS_OF_REPULSION = 6;
     private final static int UNSEEN_TILE_SAMPLING_RATE = 5;
     private final static int UNSEEN_TILE_RECALC_PERIOD = 5;
+    private final static float DEFENSE_ZONE_SETUP = 0.5f;
     private final static float COMBAT_ZONE_SETUP = 1.0f;
     private final static float COMBAT_ZONE_COMBAT = 5.0f;
     private final static float INFLUENCE_MAP_SETUP = 1.0f;
@@ -33,6 +34,7 @@ public class MyBot extends Bot {
     private final Set<Tile> _destinations = new HashSet<Tile>();
     private final Set<Tile> _toMove = new HashSet<Tile>();
     private Set<Tile> _unseenTiles = null;
+    private Set<Tile> _enemyHills = new HashSet<Tile>();
     private final Map<Tile, DefenseZone> _myHillDefenses = new HashMap<Tile, DefenseZone>();
     private int _turn = 0;
     private static LogFacade _log;
@@ -54,6 +56,16 @@ public class MyBot extends Bot {
 
             _timeManager.nextStep(INFLUENCE_MAP_MOVEMENT, "Influence Map Movement");
             long start = System.currentTimeMillis();
+            // For those combat zones that got to do their thing fully, without timing out,
+            // leave the ants they didn't move (presumably intentionally) out of consideration
+            // for influence map-based movement.
+            for (CombatZone z : _combatZones) {
+                if (!z.getTimedOut()) {
+                    for (Ant myAnt : z.getMyAntsInCombat()) {
+                        _untargetedAnts.remove(myAnt.getPosition());
+                    }
+                }
+            }
             for (Tile ant : new ArrayList<Tile>(_untargetedAnts)) {
                 for (Iterator<Tile> moves = _influence.getTargets(ant); moves.hasNext(); ) {
                     if (moveToLocation(ant, moves.next())) {
@@ -88,9 +100,10 @@ public class MyBot extends Bot {
         }
         _timeManager.turnStarted();
 
+        _timeManager.nextStep(DEFENSE_ZONE_SETUP, "Defense Zone Setup");
         // Don't defend old hills
         for (Iterator<Tile> oldHills = _myHillDefenses.keySet().iterator();
-             oldHills.hasNext(); ) {
+             oldHills.hasNext() && _timeManager.stepTimeOverrun(); ) {
             Tile oldHill = oldHills.next();
             if (!Registry.Instance.getMyHills().contains(oldHill)) {
                 _log.debug("Removing defense policy for dead hill [%s]", oldHill);
@@ -100,6 +113,9 @@ public class MyBot extends Bot {
         for (Tile myHill : Registry.Instance.getMyHills()) {
             DefenseZone defense = _myHillDefenses.get(myHill);
             if (defense == null) {
+                if (_timeManager.stepTimeOverrun()) {
+                    break;
+                }
                 long repulseStart = System.currentTimeMillis();
                 // Aim to keep ants at least 6 moves away from my hills
                 _myHillDefenses.put(myHill, new DefenseZone(myHill, MY_HILL_RADIUS_OF_REPULSION));
@@ -128,12 +144,28 @@ public class MyBot extends Bot {
             }
         }
 
+        // Manage enemy hills set
+        for (Iterator<Tile> enemyHills = _enemyHills.iterator(); enemyHills.hasNext(); ) {
+            Tile enemyHill = enemyHills.next();
+            // Remove those that we've seen, but are confirmed dead/missing
+            if (!Registry.Instance.getEnemyHills().contains(enemyHill) &&
+                Registry.Instance.isVisible(enemyHill)) {
+                enemyHills.remove();
+            }
+        }
+        for (Tile enemyHill : Registry.Instance.getEnemyHills()) {
+            _enemyHills.add(enemyHill);
+        }
+
         if (_influence == null) {
             _influence = new TargetInfluenceMap();
         }
         _timeManager.nextStep(INFLUENCE_MAP_SETUP, "Influence Map Setup");
         long start = System.currentTimeMillis();
-        _influence.reset(_unseenTiles, _timeManager, _myHillDefenses.values());
+        _influence.reset(_unseenTiles,
+                         _enemyHills,
+                         _timeManager,
+                         _myHillDefenses.values());
         _log.debug("Set up influence map in %d ms", System.currentTimeMillis() - start);
 
         createCombatZones();
@@ -219,7 +251,7 @@ public class MyBot extends Bot {
             _combatZones.add(zone);
         }
         _log.info("Took %d ms to create %d combat zones",
-                   System.currentTimeMillis() - start, _combatZones.size());
+                  System.currentTimeMillis() - start, _combatZones.size());
     }
 
     private void addNearEnemies(Set<Ant> combatZoneAnts,
