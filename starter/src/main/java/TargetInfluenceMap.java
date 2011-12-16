@@ -41,11 +41,11 @@ public class TargetInfluenceMap {
         seedInfluence(r.getEnemyAnts(), Integer.MAX_VALUE / 5.0);
 
         for (DefenseZone defenseZone : defenses) {
-            if (defenseZone.hasAntsWithinAlarmRadius()) {
-                // Draw attention to invaders
-                seedInfluence(defenseZone.getInvaders(), Integer.MAX_VALUE);
-            }
-            //seedInfluence(defenseZone.getStrongpoints(), Integer.MAX_VALUE / 250.0);
+            // Draw attention to invaders
+            seedInfluence(defenseZone.getInvaders(), Integer.MAX_VALUE);
+            // Draw ants towards lookout posts that have become invisible (try to
+            // maintain some visibility of each hill)
+            seedInfluence(defenseZone.getInvisibleLookouts(), Integer.MAX_VALUE / 2.0);
         }
 
         diffuse(time);

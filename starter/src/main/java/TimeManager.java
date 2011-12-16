@@ -9,6 +9,7 @@ import java.util.LinkedList;
 public final class TimeManager {
 
     private final long _totalAllowed;
+    private long _banked = 0;
     private int _currentStep = 0;
     private long _turnStartMs;
     private long _stepTimoutMs;
@@ -66,7 +67,10 @@ public final class TimeManager {
             _wipStepDescriptions.add(stepDescription);
         }
         else {
-            _stepTimoutMs = System.currentTimeMillis() + _stepAllowedMs[_currentStep];
+            if (_stepTimoutMs > 0) {
+                _banked += (_stepTimoutMs - System.currentTimeMillis());
+            }
+            _stepTimoutMs = System.currentTimeMillis() + _stepAllowedMs[_currentStep] + _banked;
         }
     }
 
@@ -138,5 +142,7 @@ public final class TimeManager {
             _stepWeights = null;
         }
         _currentStep = -1;
+        _banked = 0;
+        _stepTimoutMs = -1;
     }
 }

@@ -42,6 +42,8 @@ public class Registry {
 
     private final Map<Tile, EnemyAnt> enemyAnts = new HashMap<Tile, EnemyAnt>();
 
+    private final Map<Integer, List<EnemyAnt>> enemiesByTeams = new HashMap<Integer, List<EnemyAnt>>();
+
     private final Set<Tile> myHills = new HashSet<Tile>();
 
     private final Set<Tile> enemyHills = new HashSet<Tile>();
@@ -210,7 +212,7 @@ public class Registry {
         return map[tile.getRow()][tile.getCol()];
     }
 
-    public final Ilk getIlk(int row, int col) {
+    public final Ilk getIlk(final int row, final int col) {
         return map[row][col];
     }
 
@@ -234,6 +236,29 @@ public class Registry {
     public Ilk getIlk(Tile tile, Aim direction) {
         Tile newTile = getTile(tile, direction);
         return map[newTile.getRow()][newTile.getCol()];
+    }
+
+    public Tile getTile(final Tile t, final Aim a, final int distance) {
+        int rowDelta = 0, colDelta = 0;
+        switch (a) {
+            case NORTH:
+                colDelta = 1;
+                break;
+            case EAST:
+                rowDelta = 1;
+                break;
+            case SOUTH:
+                colDelta = -1;
+                break;
+            case WEST:
+                rowDelta = -1;
+                break;
+        }
+        for (int rep = 0; rep < distance; rep++) {
+            rowDelta += rowDelta;
+            colDelta += colDelta;
+        }
+        return getTile(t, new Tile(rowDelta, colDelta));
     }
 
     /**
@@ -346,6 +371,10 @@ public class Registry {
         return visible[tile.getRow()][tile.getCol()];
     }
 
+    public boolean isVisible(final int row, final int col) {
+        return visible[row][col];
+    }
+
     /**
      * Calculates the distance between two locations on the game map in moves
      *
@@ -427,6 +456,7 @@ public class Registry {
             map[enemyAnt.getRow()][enemyAnt.getCol()] = Ilk.LAND;
         }
         enemyAnts.clear();
+        enemiesByTeams.clear();
     }
 
     /**
@@ -510,7 +540,14 @@ public class Registry {
                 myAnts.add(tile);
                 break;
             case ENEMY_ANT:
-                enemyAnts.put(tile, new EnemyAnt(tile, team));
+                EnemyAnt enemy = new EnemyAnt(tile, team);
+                enemyAnts.put(tile, enemy);
+                List<EnemyAnt> forTeam = enemiesByTeams.get(team);
+                if (forTeam == null) {
+                    forTeam = new ArrayList<EnemyAnt>();
+                    enemiesByTeams.put(team, forTeam);
+                }
+                forTeam.add(enemy);
                 break;
         }
     }

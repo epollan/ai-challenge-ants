@@ -20,10 +20,9 @@ public class MyBot extends Bot {
     }
 
     private final static int TIME_ALLOCATION_PAD = 50;
-    private final static int MY_HILL_RADIUS_OF_REPULSION = 6;
+    private final static int MY_HILL_RADIUS_OF_REPULSION = 5;
     private final static int UNSEEN_TILE_SAMPLING_RATE = 5;
     private final static int UNSEEN_TILE_RECALC_PERIOD = 5;
-    private final static float DEFENSE_ZONE_SETUP = 0.5f;
     private final static float COMBAT_ZONE_SETUP = 1.0f;
     private final static float COMBAT_ZONE_COMBAT = 5.0f;
     private final static float INFLUENCE_MAP_SETUP = 1.0f;
@@ -88,6 +87,7 @@ public class MyBot extends Bot {
     }
 
     private void startTurn() {
+        long setupStart = System.currentTimeMillis();
         _log.info(String.format("[[...turn %d...]]", _turn));
 
         // Track targeted ants through turn
@@ -100,10 +100,8 @@ public class MyBot extends Bot {
         }
         _timeManager.turnStarted();
 
-        _timeManager.nextStep(DEFENSE_ZONE_SETUP, "Defense Zone Setup");
         // Don't defend old hills
-        for (Iterator<Tile> oldHills = _myHillDefenses.keySet().iterator();
-             oldHills.hasNext() && _timeManager.stepTimeOverrun(); ) {
+        for (Iterator<Tile> oldHills = _myHillDefenses.keySet().iterator(); oldHills.hasNext(); ) {
             Tile oldHill = oldHills.next();
             if (!Registry.Instance.getMyHills().contains(oldHill)) {
                 _log.debug("Removing defense policy for dead hill [%s]", oldHill);
@@ -113,13 +111,9 @@ public class MyBot extends Bot {
         for (Tile myHill : Registry.Instance.getMyHills()) {
             DefenseZone defense = _myHillDefenses.get(myHill);
             if (defense == null) {
-                if (_timeManager.stepTimeOverrun()) {
-                    break;
-                }
-                long repulseStart = System.currentTimeMillis();
                 // Aim to keep ants at least 6 moves away from my hills
-                _myHillDefenses.put(myHill, new DefenseZone(myHill, MY_HILL_RADIUS_OF_REPULSION));
-                _log.info("Created DefenseZone in %d ms", System.currentTimeMillis() - repulseStart);
+                defense = new DefenseZone(myHill, MY_HILL_RADIUS_OF_REPULSION);
+                _myHillDefenses.put(myHill, defense);
             }
         }
 
@@ -128,9 +122,9 @@ public class MyBot extends Bot {
             // Sparsely sample the board for unseen tiles
             for (int row = 0; row < Registry.Instance.getRows(); row += UNSEEN_TILE_SAMPLING_RATE) {
                 for (int col = 0; col < Registry.Instance.getCols(); col += UNSEEN_TILE_SAMPLING_RATE) {
-                    Tile t = new Tile(row, col);
-                    if (!Registry.Instance.isVisible(t) && Registry.Instance.getIlk(t) != Ilk.WATER) {
-                        _unseenTiles.add(t);
+                    if (!Registry.Instance.isVisible(row, col) &&
+                        Registry.Instance.getIlk(row, col) != Ilk.WATER) {
+                        _unseenTiles.add(new Tile(row, col));
                     }
                 }
             }
@@ -156,6 +150,8 @@ public class MyBot extends Bot {
         for (Tile enemyHill : Registry.Instance.getEnemyHills()) {
             _enemyHills.add(enemyHill);
         }
+
+        _log.info("Unmanaged setup operations completed in %d ms", System.currentTimeMillis() - setupStart);
 
         if (_influence == null) {
             _influence = new TargetInfluenceMap();
