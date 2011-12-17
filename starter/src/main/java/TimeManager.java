@@ -71,6 +71,7 @@ public final class TimeManager {
                 _banked += (_stepTimoutMs - System.currentTimeMillis());
             }
             _stepTimoutMs = System.currentTimeMillis() + _stepAllowedMs[_currentStep] + _banked;
+            _banked = 0;
         }
     }
 

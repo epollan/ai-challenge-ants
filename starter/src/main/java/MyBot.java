@@ -162,7 +162,7 @@ public class MyBot extends Bot {
                          _enemyHills,
                          _timeManager,
                          _myHillDefenses.values());
-        _log.debug("Set up influence map in %d ms", System.currentTimeMillis() - start);
+        _log.info("Set up influence map in %d ms", System.currentTimeMillis() - start);
 
         createCombatZones();
     }
@@ -194,6 +194,7 @@ public class MyBot extends Bot {
 
     private void createCombatZones() {
         long start = System.currentTimeMillis();
+        boolean timedOut = false;
         _combatZones.clear();
         _timeManager.nextStep(COMBAT_ZONE_SETUP, "Combat Zone Setup");
         Map<Tile, List<EnemyAnt>> enemiesInRange = null;
@@ -202,11 +203,12 @@ public class MyBot extends Bot {
         // Find each ant's close-by enemies
         for (Tile myPos : Registry.Instance.getMyAnts()) {
             List<EnemyAnt> inRange = null;
-            for (Tile enemyPos : Registry.Instance.getEnemyAnts()) {
-                if (Registry.Instance.getDistance2(myPos, enemyPos) <= range2) {
+            for (Tile delta : Registry.Instance.getOffsets(range2)) {
+                Tile possibleAnt = Registry.Instance.getTile(myPos, delta);
+                if (Registry.Instance.getIlk(possibleAnt) == Ilk.ENEMY_ANT) {
                     _log.debug("COMBAT: candidates within %d (sq):  me [%s], enemy [%s]",
-                               range2, myPos, enemyPos);
-                    EnemyAnt enemyAnt = Registry.Instance.getTeamedEnemyAnt(enemyPos);
+                               range2, myPos, possibleAnt);
+                    EnemyAnt enemyAnt = Registry.Instance.getTeamedEnemyAnt(possibleAnt);
                     // Map enemies by ally
                     if (inRange == null) {
                         if (enemiesInRange == null) {
@@ -230,56 +232,80 @@ public class MyBot extends Bot {
                     }
                     allies.add(myPos);
                 }
+                if (_timeManager.stepTimeOverrun()) {
+                    timedOut = true;
+                    break;
+                }
             }
-            if (_timeManager.stepTimeOverrun()) {
+            if (timedOut || _timeManager.stepTimeOverrun()) {
+                timedOut = true;
                 break;
             }
         }
         // Any ants that share "regional" enemies should be included in the same CombatZone
-        while (enemiesInRange != null && enemiesInRange.size() > 0 && !_timeManager.stepTimeOverrun()) {
+        while (enemiesInRange != null && enemiesInRange.size() > 0) {
+            if (timedOut || _timeManager.stepTimeOverrun()) {
+                timedOut = true;
+                break;
+            }
             Set<Ant> combatZoneAnts = new HashSet<Ant>(Registry.Instance.getMyAnts().size() +
                                                        Registry.Instance.getEnemyAnts().size());
             Tile me = enemiesInRange.keySet().iterator().next();
             if (combatZoneAnts.add(new Ant(me))) {
-                addNearEnemies(combatZoneAnts, enemiesInRange, alliesInRange, me);
+                timedOut = addNearEnemies(combatZoneAnts, enemiesInRange, alliesInRange, me);
+                if (timedOut) {
+                    break;
+                }
             }
             CombatZone zone = new CombatZone(combatZoneAnts);
             _combatZones.add(zone);
         }
-        _log.info("Took %d ms to create %d combat zones",
-                  System.currentTimeMillis() - start, _combatZones.size());
+        _log.info("Took %d ms to create %d combat zones (timed out?: %b)",
+                  System.currentTimeMillis() - start, _combatZones.size(), timedOut);
     }
 
-    private void addNearEnemies(Set<Ant> combatZoneAnts,
-                                Map<Tile, List<EnemyAnt>> enemiesByAlly,
-                                Map<EnemyAnt, List<Tile>> alliesByEnemy,
-                                Tile me) {
+    private boolean addNearEnemies(Set<Ant> combatZoneAnts,
+                                   Map<Tile, List<EnemyAnt>> enemiesByAlly,
+                                   Map<EnemyAnt, List<Tile>> alliesByEnemy,
+                                   Tile me) {
         if (_timeManager.stepTimeOverrun()) {
-            return;
+            return true;
         }
         List<EnemyAnt> myEnemies = enemiesByAlly.get(me);
         enemiesByAlly.remove(me);
         for (EnemyAnt enemy : myEnemies) {
             if (combatZoneAnts.add(enemy)) {
-                addNearAllies(combatZoneAnts, enemiesByAlly, alliesByEnemy, enemy);
+                if (addNearAllies(combatZoneAnts, enemiesByAlly, alliesByEnemy, enemy)) {
+                    return true;
+                }
+            }
+            if (_timeManager.stepTimeOverrun()) {
+                return true;
             }
         }
+        return false;
     }
 
-    private void addNearAllies(Set<Ant> combatZoneAnts,
-                               Map<Tile, List<EnemyAnt>> enemiesByAlly,
-                               Map<EnemyAnt, List<Tile>> alliesByEnemy,
-                               EnemyAnt enemy) {
+    private boolean addNearAllies(Set<Ant> combatZoneAnts,
+                                  Map<Tile, List<EnemyAnt>> enemiesByAlly,
+                                  Map<EnemyAnt, List<Tile>> alliesByEnemy,
+                                  EnemyAnt enemy) {
         if (_timeManager.stepTimeOverrun()) {
-            return;
+            return true;
         }
         List<Tile> alliesSharingEnemy = alliesByEnemy.get(enemy);
         alliesByEnemy.remove(enemy);
         for (Tile ally : alliesSharingEnemy) {
             if (combatZoneAnts.add(new Ant(ally))) {
-                addNearEnemies(combatZoneAnts, enemiesByAlly, alliesByEnemy, ally);
+                if (addNearEnemies(combatZoneAnts, enemiesByAlly, alliesByEnemy, ally)) {
+                    return true;
+                }
+            }
+            if (_timeManager.stepTimeOverrun()) {
+                return true;
             }
         }
+        return false;
     }
 
     private void engageInCombat() {

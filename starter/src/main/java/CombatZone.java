@@ -54,11 +54,11 @@ public class CombatZone {
         // of retaining my ants.
         while (_myAnts.size() + _allAnts.size() > MAX_ANTS) {
             if (_allAnts.size() > _myAnts.size()) {
-                _log.debug("COMBAT:  too many ants, removing enemy at [%s]", _allAnts.remove(0).getPosition());
-                _log.debug("COMBAT:  too many ants, removing enemy at [%s]", _allAnts.remove(0).getPosition());
+                _log.info("COMBAT:  too many ants, removing enemy at [%s]", _allAnts.remove(0).getPosition());
+                _log.info("COMBAT:  too many ants, removing enemy at [%s]", _allAnts.remove(0).getPosition());
             }
-            if (_myAnts.size() > _allAnts.size() + 3) {
-                _log.debug("COMBAT:  too many ants, removing my ant at [%s]", _myAnts.remove(0).getPosition());
+            else {
+                _log.info("COMBAT:  too many ants, removing my ant at [%s]", _myAnts.remove(0).getPosition());
             }
         }
         _allAnts.addAll(0, _myAnts);

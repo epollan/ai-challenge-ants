@@ -1,4 +1,5 @@
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -74,6 +75,8 @@ public class CombatInfluenceMap {
 
         public double Value = 0.0;
         public List<Ant> Contributors;
+        public BitSet PseudoContribRows;
+        public BitSet PseudoContricCols;
 
         public void addContributor(Ant a) {
             if (Contributors == null) {
@@ -85,5 +88,7 @@ public class CombatInfluenceMap {
         public boolean containsContributor(Ant a) {
             return Contributors != null && Contributors.contains(a);
         }
+
+        //public void TODO
     }
 }
