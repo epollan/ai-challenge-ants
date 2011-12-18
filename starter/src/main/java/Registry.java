@@ -269,11 +269,15 @@ public class Registry {
      * @return location in <code>direction</code> from <cod>tile</code>
      */
     public Tile getTile(Tile tile, Aim direction) {
-        int row = (tile.getRow() + direction.getRowDelta()) % rows;
+        return getTile(tile.getRow(), tile.getCol(), direction);
+    }
+
+    public Tile getTile(int row, int col, Aim direction) {
+        row = (row + direction.getRowDelta()) % rows;
         if (row < 0) {
             row += rows;
         }
-        int col = (tile.getCol() + direction.getColDelta()) % cols;
+        col = (col + direction.getColDelta()) % cols;
         if (col < 0) {
             col += cols;
         }
@@ -373,6 +377,16 @@ public class Registry {
 
     public boolean isVisible(final int row, final int col) {
         return visible[row][col];
+    }
+
+    public boolean hasVisibleNeighbor(final int row, final int col) {
+        for (Aim a : Aim.values()) {
+            Tile t = getTile(row, col, a);
+            if (visible[t.getRow()][t.getCol()]) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

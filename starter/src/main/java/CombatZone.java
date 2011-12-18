@@ -83,6 +83,15 @@ public class CombatZone {
         return _myAnts;
     }
 
+    private static final Iterable<Ant> EMPTY = new ArrayList<Ant>(0);
+
+    public Iterable<Ant> getMyOutnumberedAnts() {
+        if (_myAnts.size() < (_allAnts.size() / 2)) {
+            return _myAnts;
+        }
+        return EMPTY;
+    }
+
     private void incrementIndexes() {
         for (int pos = 0; pos < _indexes.length; ++pos) {
             _indexes[pos] += 1;

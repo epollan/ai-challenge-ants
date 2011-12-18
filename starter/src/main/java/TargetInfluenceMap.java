@@ -23,7 +23,8 @@ public class TargetInfluenceMap {
     public void reset(Iterable<Tile> unseenTiles,
                       Iterable<Tile> enemyHills,
                       TimeManager time,
-                      Iterable<DefenseZone> defenses) {
+                      Iterable<DefenseZone> defenses,
+                      Iterable<CombatZone> combatZones) {
         for (double[] row : _influence) {
             Arrays.fill(row, 0, row.length, 0.0);
         }
@@ -46,6 +47,10 @@ public class TargetInfluenceMap {
             // Draw ants towards lookout posts that have become invisible (try to
             // maintain some visibility of each hill)
             seedInfluence(defenseZone.getInvisibleLookouts(), Integer.MAX_VALUE / 2.0);
+        }
+
+        for (CombatZone combatZone : combatZones) {
+            seedAntInfluence(combatZone.getMyOutnumberedAnts(), Integer.MAX_VALUE / 2.0);
         }
 
         diffuse(time);
@@ -76,6 +81,14 @@ public class TargetInfluenceMap {
 
     private void seedInfluence(Iterable<Tile> targets, double influence) {
         for (Tile t : targets) {
+            _seeded[t.getRow()][t.getCol()] = true;
+            _influence[t.getRow()][t.getCol()] = influence;
+        }
+    }
+
+    private void seedAntInfluence(Iterable<Ant> ants, double influence) {
+        for (Ant a : ants) {
+            Tile t = a.getPosition();
             _seeded[t.getRow()][t.getCol()] = true;
             _influence[t.getRow()][t.getCol()] = influence;
         }

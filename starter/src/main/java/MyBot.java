@@ -118,12 +118,15 @@ public class MyBot extends Bot {
         }
 
         if (_unseenTiles == null || _turn % UNSEEN_TILE_RECALC_PERIOD == 0) {
-            _unseenTiles = new HashSet<Tile>();
+            final int numRows = Registry.Instance.getRows();
+            final int numCols = Registry.Instance.getCols();
+            _unseenTiles = new HashSet<Tile>(numRows * numCols);
             // Sparsely sample the board for unseen tiles
-            for (int row = 0; row < Registry.Instance.getRows(); row += UNSEEN_TILE_SAMPLING_RATE) {
-                for (int col = 0; col < Registry.Instance.getCols(); col += UNSEEN_TILE_SAMPLING_RATE) {
+            for (int row = 0; row < numRows; row++) {
+                for (int col = 0; col < numCols; col++) {
                     if (!Registry.Instance.isVisible(row, col) &&
-                        Registry.Instance.getIlk(row, col) != Ilk.WATER) {
+                        Registry.Instance.getIlk(row, col) != Ilk.WATER &&
+                        Registry.Instance.hasVisibleNeighbor(row, col)) {
                         _unseenTiles.add(new Tile(row, col));
                     }
                 }
@@ -153,6 +156,8 @@ public class MyBot extends Bot {
 
         _log.info("Unmanaged setup operations completed in %d ms", System.currentTimeMillis() - setupStart);
 
+        createCombatZones();
+
         if (_influence == null) {
             _influence = new TargetInfluenceMap();
         }
@@ -161,10 +166,9 @@ public class MyBot extends Bot {
         _influence.reset(_unseenTiles,
                          _enemyHills,
                          _timeManager,
-                         _myHillDefenses.values());
+                         _myHillDefenses.values(),
+                         _combatZones);
         _log.info("Set up influence map in %d ms", System.currentTimeMillis() - start);
-
-        createCombatZones();
     }
 
     private void concludeTurn() {
