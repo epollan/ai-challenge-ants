@@ -95,7 +95,7 @@ public class TargetInfluenceMap {
     }
 
     private void diffuse(TimeManager time) {
-        for (int rep = 0; rep < 60; rep++) {
+        for (int rep = 0; rep < 50; rep++) {
             for (int row = 0; row < _influence.length; row++) {
                 for (int col = 0; col < _influence[row].length; col++) {
                     propagate(row, col);
