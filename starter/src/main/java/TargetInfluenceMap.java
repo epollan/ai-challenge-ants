@@ -49,10 +49,6 @@ public class TargetInfluenceMap {
             seedInfluence(defenseZone.getInvisibleLookouts(), Integer.MAX_VALUE / 2.0);
         }
 
-        for (CombatZone combatZone : combatZones) {
-            seedAntInfluence(combatZone.getMyOutnumberedAnts(), Integer.MAX_VALUE / 2.0);
-        }
-
         diffuse(time);
 
         for (Tile hill : r.getMyHills()) {
@@ -81,14 +77,6 @@ public class TargetInfluenceMap {
 
     private void seedInfluence(Iterable<Tile> targets, double influence) {
         for (Tile t : targets) {
-            _seeded[t.getRow()][t.getCol()] = true;
-            _influence[t.getRow()][t.getCol()] = influence;
-        }
-    }
-
-    private void seedAntInfluence(Iterable<Ant> ants, double influence) {
-        for (Ant a : ants) {
-            Tile t = a.getPosition();
             _seeded[t.getRow()][t.getCol()] = true;
             _influence[t.getRow()][t.getCol()] = influence;
         }

@@ -120,13 +120,17 @@ public class MyBot extends Bot {
         if (_unseenTiles == null || _turn % UNSEEN_TILE_RECALC_PERIOD == 0) {
             final int numRows = Registry.Instance.getRows();
             final int numCols = Registry.Instance.getCols();
-            _unseenTiles = new HashSet<Tile>(numRows * numCols);
+            if (_unseenTiles == null) {
+                _unseenTiles = new HashSet<Tile>(numRows * numCols);
+            }
+            else {
+                _unseenTiles.clear();
+            }
             // Sparsely sample the board for unseen tiles
-            for (int row = 0; row < numRows; row++) {
-                for (int col = 0; col < numCols; col++) {
+            for (int row = 0; row < numRows; row += UNSEEN_TILE_SAMPLING_RATE) {
+                for (int col = 0; col < numCols; col += UNSEEN_TILE_SAMPLING_RATE) {
                     if (!Registry.Instance.isVisible(row, col) &&
-                        Registry.Instance.getIlk(row, col) != Ilk.WATER &&
-                        Registry.Instance.hasVisibleNeighbor(row, col)) {
+                        Registry.Instance.getIlk(row, col) != Ilk.WATER) {
                         _unseenTiles.add(new Tile(row, col));
                     }
                 }
